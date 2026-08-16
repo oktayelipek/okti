@@ -706,6 +706,9 @@ class OktigentApp(App):
 
                     accumulated_content += event.content
                     stream_widget.append_delta(event.content)
+                    # Keep the growing response in view (throttled to reduce flicker)
+                    if event_count % 3 == 0:
+                        self.chat_pane.scroll_end(animate=False)
 
                 elif event.type in ("tool_start", "tool_end", "tool_denied"):
                     self.chat_pane.hide_thinking()
@@ -740,6 +743,7 @@ class OktigentApp(App):
                     self.chat_pane.hide_thinking()
                     if stream_widget:
                         stream_widget.finish()
+                        self.chat_pane.scroll_end(animate=False)
                     if event.usage:
                         self.tool_dock.update_tokens(event.usage)
                     self.tool_dock.set_state("success")
@@ -754,12 +758,18 @@ class OktigentApp(App):
             self.chat_pane.hide_thinking()
             if stream_widget:
                 stream_widget.finish()
+                self.chat_pane.scroll_end(animate=False)
+                logger.debug("_run_agent DIAG: widget size=%s content_len=%d mounted=%s",
+                    stream_widget.size, len(getattr(stream_widget, '_full_content', '')),
+                    stream_widget.is_mounted)
             elif not accumulated_content:
                 logger.warning("_run_agent: no content received from model")
                 self.chat_pane.add_status(
                     "Model returned an empty response. This model may not support conversational chat or tool calling.",
                     style="dim yellow",
                 )
+            logger.debug("_run_agent DIAG: chat_pane children=%s",
+                [type(c).__name__ for c in self.chat_pane.children])
             self.tool_dock.set_state("idle")
 
         except Exception as e:
