@@ -80,11 +80,13 @@ class ToolResult:
 
 @dataclass
 class TokenUsage:
-    """Token usage statistics."""
+    """Token usage statistics including prompt caching."""
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_usd: float = 0.0
 
     def __add__(self, other: TokenUsage) -> TokenUsage:
@@ -92,6 +94,8 @@ class TokenUsage:
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
+            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
             cost_usd=self.cost_usd + other.cost_usd,
         )
 

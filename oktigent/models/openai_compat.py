@@ -29,6 +29,32 @@ _PROVIDER_URLS: dict[str, str] = {
 }
 
 
+def estimate_cost(model_name: str, prompt_tokens: int, completion_tokens: int, cache_read: int = 0) -> float:
+    """Estimate USD cost based on model pricing per million tokens."""
+    m = (model_name or "").lower()
+    if ":free" in m or "free" in m:
+        return 0.0
+
+    if "claude-3-7" in m or "claude-3.7" in m or "claude-3-5" in m or "claude-3.5" in m:
+        p_rate, c_rate, cr_rate = 3.0, 15.0, 0.30
+    elif "haiku" in m:
+        p_rate, c_rate, cr_rate = 0.80, 4.0, 0.08
+    elif "gpt-4o-mini" in m or "o3-mini" in m:
+        p_rate, c_rate, cr_rate = 0.15, 0.60, 0.075
+    elif "gpt-4o" in m:
+        p_rate, c_rate, cr_rate = 2.50, 10.0, 1.25
+    elif "deepseek" in m:
+        p_rate, c_rate, cr_rate = 0.14, 0.28, 0.014
+    elif "gemini-2" in m or "gemini-1.5-flash" in m:
+        p_rate, c_rate, cr_rate = 0.10, 0.40, 0.025
+    else:
+        p_rate, c_rate, cr_rate = 0.50, 1.50, 0.10
+
+    uncached_prompt = max(0, prompt_tokens - cache_read)
+    cost = (uncached_prompt * p_rate + cache_read * cr_rate + completion_tokens * c_rate) / 1_000_000.0
+    return round(cost, 6)
+
+
 class OpenAICompatProvider(BaseProvider):
     """OpenAI-compatible chat completions API provider."""
 
@@ -81,10 +107,26 @@ class OpenAICompatProvider(BaseProvider):
 
         choice = data["choices"][0]
         msg = choice["message"]
+        u_data = data.get("usage", {})
+        prompt_tokens = u_data.get("prompt_tokens", 0)
+        completion_tokens = u_data.get("completion_tokens", 0)
+        total_tokens = u_data.get("total_tokens", 0) or (prompt_tokens + completion_tokens)
+        cache_read = (
+            u_data.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+            or u_data.get("cache_read_input_tokens", 0)
+            or 0
+        )
+        cache_write = u_data.get("cache_creation_input_tokens", 0) or 0
+        active_model = data.get("model", model or "")
+        cost = estimate_cost(active_model, prompt_tokens, completion_tokens, cache_read)
+
         usage = TokenUsage(
-            prompt_tokens=data.get("usage", {}).get("prompt_tokens", 0),
-            completion_tokens=data.get("usage", {}).get("completion_tokens", 0),
-            total_tokens=data.get("usage", {}).get("total_tokens", 0),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            cost_usd=cost,
         )
 
         tool_calls = [ToolCall.from_raw(tc) for tc in msg.get("tool_calls", [])]
@@ -93,9 +135,9 @@ class OpenAICompatProvider(BaseProvider):
             role=Role.ASSISTANT,
             content=msg.get("content") or msg.get("reasoning") or msg.get("thinking") or "",
             tool_calls=tool_calls,
-            model=data.get("model", model or ""),
+            model=active_model,
         )
-        return ProviderResponse(message=message, usage=usage, model=data.get("model", ""))
+        return ProviderResponse(message=message, usage=usage, model=active_model)
 
     async def stream_chat(
         self,
@@ -161,13 +203,28 @@ class OpenAICompatProvider(BaseProvider):
                         )
 
                     if finish:
-                        usage_data = data.get("usage", {})
+                        u_data = data.get("usage", {})
+                        p_tok = u_data.get("prompt_tokens", 0)
+                        c_tok = u_data.get("completion_tokens", 0)
+                        tot_tok = u_data.get("total_tokens", 0) or (p_tok + c_tok)
+                        c_read = (
+                            u_data.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+                            or u_data.get("cache_read_input_tokens", 0)
+                            or 0
+                        )
+                        c_write = u_data.get("cache_creation_input_tokens", 0) or 0
+                        m_name = data.get("model", model or "")
+                        cost = estimate_cost(m_name, p_tok, c_tok, c_read)
+
                         yield StreamChunk(
                             finish_reason=finish,
                             token_usage=TokenUsage(
-                                prompt_tokens=usage_data.get("prompt_tokens", 0),
-                                completion_tokens=usage_data.get("completion_tokens", 0),
-                                total_tokens=usage_data.get("total_tokens", 0),
+                                prompt_tokens=p_tok,
+                                completion_tokens=c_tok,
+                                total_tokens=tot_tok,
+                                cache_read_tokens=c_read,
+                                cache_write_tokens=c_write,
+                                cost_usd=cost,
                             ),
                         )
 

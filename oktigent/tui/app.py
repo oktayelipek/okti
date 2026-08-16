@@ -176,15 +176,18 @@ class ChatPane(VerticalScroll):
 
 
 class ToolDock(Static):
-    """Right panel showing animated mascot, live status, speedometer and token metrics."""
+    """Top status HUD showing model, status, latency, speedometer, cache, cost and token metrics."""
 
     state = reactive("idle")
     status_text = reactive("Ready")
     model_text = reactive("")
-    speed_text = reactive("")
-    mascot_text = reactive("(•‿•) Ready to build")
+    speed_text = reactive("⏱️ 0.0s")
+    cache_text = reactive("💾 0% cache")
+    cost_text = reactive("💰 $0.00")
+    token_text = reactive("📊 0 tok")
+    mascot_text = reactive("(•‿•)")
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         self._spinner_idx = 0
         from oktigent.tui.animations import Speedometer
@@ -206,7 +209,7 @@ class ToolDock(Static):
                 spd = self.speedometer.speed()
                 el = self.speedometer.elapsed()
                 if spd > 0:
-                    self.speed_text = f"⚡ {spd:.1f} tok/s · ⏱️ {el:.1f}s"
+                    self.speed_text = f"⏱️ {el:.1f}s · ⚡ {spd:.1f} tok/s"
                 else:
                     self.speed_text = f"⏱️ {el:.1f}s"
         else:
@@ -217,17 +220,18 @@ class ToolDock(Static):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="ribbon-container"):
-            with Horizontal(id="ribbon-brand"):
+            with Horizontal(id="ribbon-left"):
                 yield Static("✨ oktigent", id="brand-pill")
-            with Horizontal(id="ribbon-model"):
                 yield Static(self.model_text or "Ready", id="model-pill")
-            with Horizontal(id="ribbon-status"):
+            with Horizontal(id="ribbon-center"):
                 yield Static("●", id="dock-spinner")
                 yield Static(self.status_text, id="status")
                 yield Static(self.mascot_text, id="mascot-display")
-            with Horizontal(id="ribbon-stats"):
-                yield Static(self.speed_text, id="speedometer-display")
-                yield Static("0 tokens", id="token-display")
+            with Horizontal(id="ribbon-right"):
+                yield Static(self.speed_text, id="speedometer-display", classes="metric-pill")
+                yield Static(self.cache_text, id="cache-display", classes="metric-pill")
+                yield Static(self.cost_text, id="cost-display", classes="metric-pill")
+                yield Static(self.token_text, id="token-display", classes="metric-pill")
 
     def set_state(self, new_state: str, tool_name: str = "") -> None:
         from oktigent.tui.animations import get_random_mascot
@@ -263,6 +267,24 @@ class ToolDock(Static):
         except Exception:
             pass
 
+    def watch_cache_text(self, val: str) -> None:
+        try:
+            self.query_one("#cache-display", Static).update(Text(val, style="magenta"))
+        except Exception:
+            pass
+
+    def watch_cost_text(self, val: str) -> None:
+        try:
+            self.query_one("#cost-display", Static).update(Text(val, style="bold yellow"))
+        except Exception:
+            pass
+
+    def watch_token_text(self, val: str) -> None:
+        try:
+            self.query_one("#token-display", Static).update(Text(val, style="dim white"))
+        except Exception:
+            pass
+
     def update_status(self, text: str) -> None:
         self.status_text = text
 
@@ -273,13 +295,34 @@ class ToolDock(Static):
         except Exception:
             pass
 
-    def update_tokens(self, usage) -> None:
+    def update_tokens(self, usage: Any) -> None:
         if hasattr(usage, "completion_tokens"):
             self.speedometer.add_tokens(usage.completion_tokens)
-        try:
-            self.query_one("#token-display", Static).update(f"📊 {usage.total_tokens:,} tok")
-        except Exception:
-            pass
+
+        # Total tokens
+        tot = getattr(usage, "total_tokens", 0)
+        if tot >= 1000:
+            self.token_text = f"📊 {tot/1000:.1f}k tok"
+        else:
+            self.token_text = f"📊 {tot} tok"
+
+        # Cost
+        cost = getattr(usage, "cost_usd", 0.0)
+        if cost == 0.0:
+            self.cost_text = "💰 🆓 Free"
+        elif cost < 0.01:
+            self.cost_text = f"💰 ${cost:.4f}"
+        else:
+            self.cost_text = f"💰 ${cost:.3f}"
+
+        # Cache
+        p_tok = getattr(usage, "prompt_tokens", 0)
+        c_read = getattr(usage, "cache_read_tokens", 0)
+        if p_tok > 0 and c_read > 0:
+            pct = int((c_read / p_tok) * 100)
+            self.cache_text = f"💾 {pct}% cache"
+        else:
+            self.cache_text = "💾 0% cache"
 
 
 class PermissionDialog(Vertical):
@@ -920,48 +963,61 @@ class OktigentApp(App):
     #tool-dock {
         dock: top;
         height: 1;
-        background: #141726;
+        background: #101322;
         padding: 0 1;
+        overflow-x: hidden;
     }
     #ribbon-container {
         width: 100%;
         height: 1;
         layout: horizontal;
     }
-    #ribbon-brand {
+    #ribbon-left {
         width: auto;
+        margin-right: 2;
+    }
+    #brand-pill {
         color: #38bdf8;
         text-style: bold;
         margin-right: 2;
     }
-    #ribbon-model {
-        width: auto;
+    #model-pill {
         color: #c084fc;
-        margin-right: 2;
+        text-style: bold;
     }
-    #ribbon-status {
+    #ribbon-center {
         width: auto;
-        color: #34d399;
         margin-right: 2;
     }
     #dock-spinner {
         margin-right: 1;
     }
+    #status {
+        color: #34d399;
+    }
     #mascot-display {
         margin-left: 1;
         color: #f43f5e;
     }
-    #ribbon-stats {
+    #ribbon-right {
         width: 1fr;
         align-horizontal: right;
-        color: #94a3b8;
+    }
+    .metric-pill {
+        margin-left: 2;
     }
     #speedometer-display {
-        margin-right: 2;
         color: #38bdf8;
     }
+    #cache-display {
+        color: #a78bfa;
+    }
+    #cost-display {
+        color: #fbbf24;
+        text-style: bold;
+    }
     #token-display {
-        color: #64748b;
+        color: #94a3b8;
     }
     #chat {
         height: 1fr;
