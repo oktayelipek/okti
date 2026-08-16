@@ -30,7 +30,7 @@ _DEFAULT_MODELS = {
     "openai": "gpt-4o",
     "gemini": "gemini-2.5-flash",
     "deepseek": "deepseek-chat",
-    "openrouter": "anthropic/claude-3.7-sonnet",
+    "openrouter": "anthropic/claude-3.5-sonnet",
     "xai": "grok-2",
 }
 

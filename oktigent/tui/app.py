@@ -1023,7 +1023,7 @@ class OktigentApp(App):
         dock: bottom;
         height: auto;
         layout: vertical;
-        background: transparent;
+        background: #0f111a;
     }
     #input-bar {
         height: 3;
@@ -1038,6 +1038,11 @@ class OktigentApp(App):
         margin: 0 1 0 1;
         padding: 0;
         overflow: hidden;
+    }
+    Footer {
+        height: 1;
+        background: #111422;
+        margin: 0;
     }
     .assistant-message {
         margin: 0 0 1 0;
@@ -1084,7 +1089,7 @@ class OktigentApp(App):
         self.suggestions_box = OptionList(id="command-suggestions")
         yield self.suggestions_box
 
-        # Bottom container: input prompt + HUD telemetry bar right below it
+        # Bottom container: input prompt + HUD telemetry bar + Footer
         with Vertical(id="bottom-container"):
             self.input_bar = Input(
                 placeholder="Type a message or / for commands...",
@@ -1095,7 +1100,7 @@ class OktigentApp(App):
             self.tool_dock = ToolDock(id="tool-dock")
             yield self.tool_dock
 
-        yield Footer()
+            yield Footer()
 
     async def on_mount(self) -> None:
         """Initialize agent on app mount."""
