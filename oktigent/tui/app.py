@@ -104,10 +104,10 @@ class ChatPane(VerticalScroll):
         except Exception:
             pass
 
-    def start_assistant_message(self) -> StreamingMarkdown:
+    async def start_assistant_message(self) -> StreamingMarkdown:
         """Create a new streaming markdown widget for the assistant response."""
         widget = StreamingMarkdown(classes="assistant-message")
-        self.mount(widget)
+        await self.mount(widget)
         self.scroll_end(animate=False)
         return widget
 
@@ -476,6 +476,8 @@ class OktigentApp(App):
     }
     .assistant-message {
         margin: 0 0 1 0;
+        height: auto;
+        width: 1fr;
     }
     """
 
@@ -700,7 +702,7 @@ class OktigentApp(App):
                 if event.type == "content":
                     if stream_widget is None:
                         self.chat_pane.hide_thinking()
-                        stream_widget = self.chat_pane.start_assistant_message()
+                        stream_widget = await self.chat_pane.start_assistant_message()
 
                     accumulated_content += event.content
                     stream_widget.append_delta(event.content)
