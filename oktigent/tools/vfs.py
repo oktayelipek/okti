@@ -56,7 +56,14 @@ async def _resolve_diff_uri(target: str) -> str:
 
     def run_diff():
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
             if res.returncode != 0:
                 return f"Git diff error: {res.stderr.strip()}"
             out = res.stdout.strip()
@@ -83,7 +90,14 @@ async def _resolve_git_uri(target: str) -> str:
 
     def run_git():
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
             if res.returncode != 0:
                 return f"Git error: {res.stderr.strip()}"
             return f"## Git Output (`git {' '.join(cmd[1:])}`)\n\n```\n{res.stdout.strip()}\n```"
@@ -141,6 +155,8 @@ async def _resolve_conflict_uri(target: str) -> str:
                 ["git", "diff", "--name-only", "--diff-filter=U"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             unmerged = [f.strip() for f in res.stdout.splitlines() if f.strip()]

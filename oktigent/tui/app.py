@@ -23,13 +23,12 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Label, OptionList, Static
+from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from oktigent.agent.loop import AgentLoop, StreamEvent
 from oktigent.config import OktigentConfig
 from oktigent.tui.streaming import StreamingMarkdown
-from oktigent.tui.widgets import FileTree
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +65,16 @@ class ChatPane(VerticalScroll):
     """Main chat area with streaming support and expressive startup banner."""
 
     def compose(self) -> ComposeResult:
-        from oktigent.tui.animations import ASCII_LOGO, get_random_quote
+        from oktigent.tui.animations import get_random_quote
 
-        welcome_text = Text()
-        welcome_text.append(ASCII_LOGO.strip() + "\n\n", style="bold cyan")
-        welcome_text.append("✦ The Agentic Coding Engine for Terminal Hackers ✦\n\n", style="bold yellow")
-        welcome_text.append(f"💡 {get_random_quote()}\n\n", style="dim italic")
-        welcome_text.append("Type your prompt or use ", style="dim")
-        welcome_text.append("/help", style="bold green")
-        welcome_text.append(" to explore slash commands.\n", style="dim")
-        yield Static(welcome_text, id="welcome")
+        welcome = Text()
+        welcome.append("\n  ✨ oktigent ", style="bold cyan")
+        welcome.append("— autonomous ai coding terminal\n", style="bold white")
+        welcome.append(f"  💡 {get_random_quote()}\n\n", style="dim italic")
+        welcome.append("  Type your prompt or press ", style="dim")
+        welcome.append("/", style="bold cyan")
+        welcome.append(" to explore slash commands.\n", style="dim")
+        yield Static(welcome, id="welcome")
 
     def add_user_message(self, text: str) -> None:
         msg = Text()
@@ -198,14 +197,18 @@ class ToolDock(Static):
                 pass
 
     def compose(self) -> ComposeResult:
-        yield Label("oktigent", id="dock-title")
-        with Horizontal(id="status-row"):
-            yield Static("●", id="dock-spinner")
-            yield Static(self.status_text, id="status")
-        yield Static(self.mascot_text, id="mascot-display")
-        yield Static(self.model_text, id="model-info")
-        yield Static(self.speed_text, id="speedometer-display")
-        yield Static("Tokens: 0\nPrompt: 0\nCompletion: 0", id="token-display")
+        with Horizontal(id="ribbon-container"):
+            with Horizontal(id="ribbon-brand"):
+                yield Static("✨ oktigent", id="brand-pill")
+            with Horizontal(id="ribbon-model"):
+                yield Static(self.model_text or "Ready", id="model-pill")
+            with Horizontal(id="ribbon-status"):
+                yield Static("●", id="dock-spinner")
+                yield Static(self.status_text, id="status")
+                yield Static(self.mascot_text, id="mascot-display")
+            with Horizontal(id="ribbon-stats"):
+                yield Static(self.speed_text, id="speedometer-display")
+                yield Static("0 tokens", id="token-display")
 
     def set_state(self, new_state: str, tool_name: str = "") -> None:
         from oktigent.tui.animations import get_random_mascot
@@ -247,7 +250,7 @@ class ToolDock(Static):
     def update_model(self, text: str) -> None:
         self.model_text = text
         try:
-            self.query_one("#model-info", Static).update(text)
+            self.query_one("#model-pill", Static).update(text)
         except Exception:
             pass
 
@@ -255,11 +258,7 @@ class ToolDock(Static):
         if hasattr(usage, "completion_tokens"):
             self.speedometer.add_tokens(usage.completion_tokens)
         try:
-            self.query_one("#token-display", Static).update(
-                f"Tokens: {usage.total_tokens:,}\n"
-                f"Prompt: {usage.prompt_tokens:,}\n"
-                f"Completion: {usage.completion_tokens:,}"
-            )
+            self.query_one("#token-display", Static).update(f"📊 {usage.total_tokens:,} tok")
         except Exception:
             pass
 
@@ -853,63 +852,76 @@ class OktigentApp(App):
 
     CSS = """
     Screen {
+        layout: vertical;
+        background: #0f111a;
+    }
+    #tool-dock {
+        dock: top;
+        height: 1;
+        background: #141726;
+        border-bottom: solid #1e2538;
+        padding: 0 1;
+        align-vertical: middle;
+    }
+    #ribbon-container {
+        width: 100%;
+        height: 1;
         layout: horizontal;
     }
-    #sidebar {
-        width: 20%;
-        max-width: 35;
-        min-width: 12;
-        border-right: solid $primary;
-        padding: 1;
-    }
-    #sidebar Label {
+    #ribbon-brand {
+        width: auto;
+        color: #38bdf8;
         text-style: bold;
-        color: $primary;
-        margin-bottom: 1;
+        margin-right: 2;
     }
-    #main {
-        width: 60%;
+    #ribbon-model {
+        width: auto;
+        color: #c084fc;
+        margin-right: 2;
+    }
+    #ribbon-status {
+        width: auto;
+        color: #34d399;
+        margin-right: 2;
+    }
+    #dock-spinner {
+        margin-right: 1;
+    }
+    #mascot-display {
+        margin-left: 1;
+        color: #f43f5e;
+    }
+    #ribbon-stats {
+        width: 1fr;
+        align-horizontal: right;
+        color: #94a3b8;
+    }
+    #speedometer-display {
+        margin-right: 2;
+        color: #38bdf8;
+    }
+    #token-display {
+        color: #64748b;
     }
     #chat {
         height: 1fr;
-        padding: 1;
+        padding: 1 2;
         overflow-y: auto;
     }
     #command-suggestions {
         display: none;
         max-height: 8;
-        background: $surface;
-        border: solid $primary;
-        margin: 0 1;
+        background: #181b2a;
+        border: round #38bdf8;
+        margin: 0 2;
     }
     #input-bar {
         dock: bottom;
         height: 3;
+        margin: 0 1 1 1;
         padding: 0 1;
-        border-top: solid $primary;
-    }
-    #dock-panel {
-        width: 20%;
-        max-width: 35;
-        min-width: 12;
-        border-left: solid $primary;
-        padding: 1;
-    }
-    #dock-title {
-        text-style: bold;
-        color: $primary;
-        margin-bottom: 1;
-    }
-    #status {
-        margin-top: 1;
-    }
-    #model-info {
-        margin-top: 1;
-        color: $secondary;
-    }
-    #token-display {
-        margin-top: 2;
-        color: $secondary;
+        border: round #38bdf8;
+        background: #131622;
     }
     .assistant-message {
         margin: 0 0 1 0;
@@ -946,34 +958,24 @@ class OktigentApp(App):
         self._force_setup = force_setup
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        # Minimal top status ribbon
+        self.tool_dock = ToolDock(id="tool-dock")
+        yield self.tool_dock
 
-        with Horizontal():
-            # Sidebar - file tree
-            with Vertical(id="sidebar"):
-                yield Label("Files")
-                self.file_tree = FileTree(id="file-tree")
-                yield self.file_tree
+        # Main expansive chat area
+        self.chat_pane = ChatPane(id="chat")
+        yield self.chat_pane
 
-            # Main chat area
-            with Vertical(id="main"):
-                self.chat_pane = ChatPane(id="chat")
-                yield self.chat_pane
+        # Autocomplete suggestions
+        self.suggestions_box = OptionList(id="command-suggestions")
+        yield self.suggestions_box
 
-                self.suggestions_box = OptionList(id="command-suggestions")
-                yield self.suggestions_box
-
-                # Input bar
-                self.input_bar = Input(
-                    placeholder="Type a message or / for commands...",
-                    id="input-bar",
-                )
-                yield self.input_bar
-
-            # Right dock
-            with Vertical(id="dock-panel"):
-                self.tool_dock = ToolDock(id="tool-dock")
-                yield self.tool_dock
+        # Modern minimal input prompt
+        self.input_bar = Input(
+            placeholder="Type a message or / for commands...",
+            id="input-bar",
+        )
+        yield self.input_bar
 
         yield Footer()
 

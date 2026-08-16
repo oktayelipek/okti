@@ -72,33 +72,29 @@ THEMES = {
     """,
     "synthwave": """
     Screen { background: #18122B; color: #E1E8EB; }
-    #sidebar { background: #251B3E; border-right: tall #F472B6; }
-    #dock-panel { background: #251B3E; border-left: tall #38BDF8; }
-    #input-bar { border: tall #F472B6; background: #393053; }
+    #tool-dock { background: #251B3E; border-bottom: solid #F472B6; }
+    #input-bar { border: round #F472B6; background: #393053; }
     .user-message { background: #393053; color: #F472B6; border-left: thick #F472B6; }
     .assistant-message { background: #2A2438; border-left: thick #38BDF8; }
     """,
     "matrix": """
     Screen { background: #050d08; color: #00FF66; }
-    #sidebar { background: #0a180e; border-right: tall #00aa44; }
-    #dock-panel { background: #0a180e; border-left: tall #00aa44; }
-    #input-bar { border: tall #00FF66; background: #0d2214; }
+    #tool-dock { background: #0a180e; border-bottom: solid #00aa44; }
+    #input-bar { border: round #00FF66; background: #0d2214; }
     .user-message { background: #0f2b19; color: #00ff88; border-left: thick #00FF66; }
     .assistant-message { background: #08160c; border-left: thick #33ff99; }
     """,
     "cyberpunk": """
     Screen { background: #090A0F; color: #FCEE09; }
-    #sidebar { background: #121526; border-right: tall #00F0FF; }
-    #dock-panel { background: #121526; border-left: tall #FF003C; }
-    #input-bar { border: tall #00F0FF; background: #1E2238; }
+    #tool-dock { background: #121526; border-bottom: solid #00F0FF; }
+    #input-bar { border: round #00F0FF; background: #1E2238; }
     .user-message { background: #241D3B; color: #FCEE09; border-left: thick #00F0FF; }
     .assistant-message { background: #121526; border-left: thick #FF003C; }
     """,
     "nord": """
     Screen { background: #2E3440; color: #D8DEE9; }
-    #sidebar { background: #3B4252; border-right: tall #88C0D0; }
-    #dock-panel { background: #3B4252; border-left: tall #81A1C1; }
-    #input-bar { border: tall #88C0D0; background: #434C5E; }
+    #tool-dock { background: #3B4252; border-bottom: solid #88C0D0; }
+    #input-bar { border: round #88C0D0; background: #434C5E; }
     .user-message { background: #434C5E; color: #ECEFF4; border-left: thick #88C0D0; }
     .assistant-message { background: #3B4252; border-left: thick #A3BE8C; }
     """,
