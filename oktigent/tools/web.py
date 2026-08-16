@@ -44,32 +44,53 @@ async def web_fetch(url: str, format: str = "text") -> str:
 
 
 async def web_search(query: str, num_results: int = 5) -> str:
-    """Search the web using DuckDuckGo Lite (no API key needed)."""
+    """Search the web using DuckDuckGo (no API key needed).
+
+    Uses DuckDuckGo HTML endpoint with robust parsing and fallback.
+    """
+    import re
+
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             resp = await client.get(
-                "https://lite.duckduckgo.com/lite/",
+                "https://html.duckduckgo.com/html/",
                 params={"q": query},
-                headers={"User-Agent": "oktigent/0.1"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) oktigent/0.2",
+                },
             )
             resp.raise_for_status()
-
-            # Basic parsing
-            import re
-            text = resp.text
-            # Extract search result links
-            links = re.findall(r'class="result-link"[^>]*>([^<]+)<', text)
-            snippets = re.findall(r'class="result-snippet"[^>]*>([^<]+)<', text)
+            html = resp.text
 
             results = []
-            for i in range(min(num_results, len(links), len(snippets))):
-                results.append(f"{i + 1}. {links[i].strip()}\n   {snippets[i].strip()}")
+            # Try structured parsing first
+            # DuckDuckGo HTML uses <a class="result__a"> for links
+            # and <a class="result__snippet"> for snippets
+            link_pattern = re.compile(r'class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>', re.DOTALL)
+            snippet_pattern = re.compile(r'class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL)
+
+            links = link_pattern.findall(html)
+            snippets = snippet_pattern.findall(html)
+
+            for i in range(min(num_results, len(links))):
+                url = links[i][0] if links[i][0].startswith("http") else f"https://duckduckgo.com/{links[i][0]}"
+                title = re.sub(r'<[^>]+>', '', links[i][1]).strip()
+                snippet = re.sub(r'<[^>]+>', '', snippets[i][1]).strip() if i < len(snippets) else ""
+                if title:
+                    results.append(f"{i + 1}. [{title}]({url})\n   {snippet}")
 
             if not results:
-                # Try alternative parsing
-                text_clean = re.sub(r"<[^>]+>", " ", text)
-                text_clean = re.sub(r"\s+", " ", text_clean).strip()
-                return f"Search: {query}\n\n{text_clean[:5000]}"
+                # Fallback: extract any links and text
+                all_links = re.findall(r'href="(https?://[^"]+)"', html)
+                text_clean = re.sub(r'<[^>]+>', ' ', html)
+                text_clean = re.sub(r'\s+', ' ', text_clean).strip()
+
+                if all_links:
+                    for i, link in enumerate(all_links[:num_results]):
+                        results.append(f"{i + 1}. {link}")
+
+                if not results:
+                    return f"Search: {query}\n\n{text_clean[:5000]}"
 
             return f"Search results for: {query}\n\n" + "\n\n".join(results)
 

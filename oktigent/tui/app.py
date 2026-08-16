@@ -31,6 +31,7 @@ from textual.widgets.option_list import Option
 from oktigent.agent.loop import AgentLoop, StreamEvent
 from oktigent.config import OktigentConfig
 from oktigent.tui.streaming import StreamingMarkdown
+from oktigent.tui.slash_commands import SlashCommandHandler
 
 logger = logging.getLogger(__name__)
 

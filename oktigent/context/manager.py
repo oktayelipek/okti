@@ -37,12 +37,40 @@ class ContextManager:
         self._ref_counter = 0
 
     def estimate_tokens(self, messages: list[Message]) -> int:
-        """Rough token estimate: ~4 chars per token."""
-        total_chars = sum(len(m.content) for m in messages)
+        """Better token estimate using word-boundary heuristic.
+
+        Rules of thumb:
+        - English: ~1 token per 4 chars or ~0.75 tokens per word
+        - Code: ~1 token per 3 chars (more symbols)
+        - CJK/emoji: ~1-2 tokens per character
+        - JSON/tool args: ~1 token per 3 chars (braces, quotes)
+        """
+        total = 0
         for msg in messages:
+            total += self._estimate_text_tokens(msg.content)
             for tc in msg.tool_calls:
-                total_chars += len(tc.arguments_json())
-        return total_chars // 4
+                total += self._estimate_text_tokens(tc.arguments_json())
+        return total
+
+    @staticmethod
+    def _estimate_text_tokens(text: str) -> int:
+        """Estimate tokens for a text string."""
+        if not text:
+            return 0
+        n = len(text)
+        if n == 0:
+            return 0
+        # CJK characters: roughly 1-2 tokens each
+        cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff' or '\u3040' <= c <= '\u30ff' or '\uac00' <= c <= '\ud7af')
+        # ASCII chars
+        ascii_count = n - cjk_count
+        # Words (for English-like text)
+        words = len(text.split())
+        # Heuristic: max of (chars/4, words*0.75, cjk_count*1.5)
+        by_chars = n / 4.0
+        by_words = words * 0.75
+        by_cjk = cjk_count * 1.5
+        return int(max(by_chars, by_words, by_cjk) + 3)  # +3 for message overhead
 
     def needs_compaction(self, messages: list[Message]) -> bool:
         """Check if context needs compaction."""
