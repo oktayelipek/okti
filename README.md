@@ -2,41 +2,74 @@
 
 Agentic coding tool for the terminal — smarter than the rest.
 
-## Features
+## Install
 
-- **Multi-provider support**: Ollama (local), OpenAI, DeepSeek, Anthropic, Gemini, OpenRouter, xAI
-- **Diff-based editing**: Token-efficient file edits
-- **Plan mode**: Scope → plan → approve → execute
-- **Context compaction**: Automatic context management for long conversations
-- **Textual TUI**: Rich terminal interface with markdown rendering
-- **Tool system**: File ops, bash commands, web search, extensible via MCP
+One command to install. Works on macOS, Linux, and Windows.
+
+### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.sh | bash
+```
+
+### Windows (PowerShell)
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.ps1 | iex"
+```
+
+### pip (manual)
+
+```bash
+pip install oktigent
+```
 
 ## Quick Start
 
 ```bash
-# Install
-pip install -e .
-
-# Run with Ollama (local, no API key needed)
-ollama pull codellama
+# Launch the TUI
 oktigent
 
-# Run with OpenAI
-OPENAI_API_KEY=sk-... oktigent
+# Run with a direct prompt (non-interactive)
+oktigent "create a Python REST API with FastAPI"
 
-# Run with Anthropic
-ANTHROPIC_API_KEY=sk-ant-... oktigent --model claude-sonnet-4-20250514
+# Skip all permission prompts
+oktigent --yolo
 ```
 
-## Commands
+## Providers
 
-| Shortcut | Description |
-|----------|-------------|
+oktigent works with any LLM provider:
+
+| Provider | API Key Env Var | Example Model |
+|----------|----------------|---------------|
+| **Ollama** (local) | — | `codellama`, `llama3` |
+| **OpenAI** | `OPENAI_API_KEY` | `gpt-4o`, `o3-mini` |
+| **Anthropic** | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| **Google Gemini** | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
+| **DeepSeek** | `DEEPSEEK_API_KEY` | `deepseek-chat` |
+| **OpenRouter** | `OPENROUTER_API_KEY` | Any model |
+| **xAI** | `XAI_API_KEY` | `grok-2` |
+
+```bash
+# Set your API key
+export OPENAI_API_KEY=sk-...
+
+# Launch with a specific provider
+oktigent --model openai/gpt-4o
+```
+
+## Slash Commands
+
+| Command | Description |
+|---------|-------------|
 | `/help` | Show help |
 | `/plan <scope>` | Create a development plan |
 | `/models` | List available models |
+| `/provider <id>` | Switch provider |
 | `/yolo` | Toggle yolo mode (bypass permissions) |
-| `/clear` | Clear chat |
+| `/clear` | Clear chat history |
+| `/session` | Show session info |
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |
 
@@ -58,6 +91,26 @@ model = "gpt-4o"
 [providers.anthropic]
 api_key = "sk-ant-..."
 model = "claude-sonnet-4-20250514"
+```
+
+## Features
+
+- **Multi-provider support**: Ollama, OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI
+- **Diff-based editing**: Token-efficient file edits (edit_file sends only changed lines)
+- **Plan mode**: Scope → plan → approve → execute workflow
+- **Context compaction**: Automatic context management for long conversations
+- **Textual TUI**: Rich terminal interface with live streaming markdown
+- **Tool system**: File ops, bash commands, web search
+- **Permission system**: allow/ask/deny per tool, yolo mode for full automation
+- **Session persistence**: SQLite-backed conversation history
+
+## Development
+
+```bash
+git clone https://github.com/oktayelipek/oktigent.git
+cd oktigent
+pip install -e ".[dev]"
+pytest tests/ -v
 ```
 
 ## License

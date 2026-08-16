@@ -16,9 +16,16 @@ def _configure_logging(verbose: bool = False) -> None:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    from oktigent import __version__
+
     parser = argparse.ArgumentParser(
         prog="oktigent",
         description="Agentic coding tool for the terminal — smarter than the rest.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"oktigent {__version__}",
     )
     parser.add_argument(
         "-v", "--verbose",
