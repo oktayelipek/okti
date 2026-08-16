@@ -125,11 +125,15 @@ class OpenAICompatProvider(BaseProvider):
                         yield StreamChunk(content_delta=content)
 
                     for tc_delta in delta.get("tool_calls", []):
+                        func = tc_delta.get("function", {})
+                        # OpenAI sends arguments as incremental JSON string
+                        args_str = func.get("arguments", "")
+                        args = {"_raw": args_str} if args_str else {}
                         yield StreamChunk(
                             tool_call_delta=ToolCall(
                                 id=tc_delta.get("id", ""),
-                                name=tc_delta.get("function", {}).get("name", ""),
-                                arguments={"_index": tc_delta.get("index", 0)},
+                                name=func.get("name", ""),
+                                arguments=args,
                             )
                         )
 

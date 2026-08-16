@@ -87,6 +87,7 @@ class AgentLoop:
 
         # Session tracking
         self.session_id: str | None = None
+        self._current_plan = None  # Set by plan.py when a plan is generated
 
     def _build_default_registry(self) -> ToolRegistry:
         """Build the default tool registry with all built-in tools."""
@@ -178,8 +179,19 @@ class AgentLoop:
                         if tc.name:
                             existing.name = tc.name
                         if tc.arguments:
-                            existing.arguments.update(tc.arguments)
+                            # Handle JSON string arguments (OpenAI-style streaming)
+                            raw_args = tc.arguments.get("_raw", "")
+                            if raw_args:
+                                existing._raw_args = getattr(existing, "_raw_args", "") + raw_args
+                                try:
+                                    import json as _json
+                                    existing.arguments = _json.loads(existing._raw_args)
+                                except (ValueError, TypeError):
+                                    pass
+                            else:
+                                existing.arguments.update(tc.arguments)
                     else:
+                        tc._raw_args = ""
                         tool_calls.append(tc)
                 if chunk.token_usage:
                     turn_usage = turn_usage + chunk.token_usage
@@ -241,14 +253,16 @@ class AgentLoop:
 
     async def _call_model(self) -> ProviderResponse:
         """Non-streaming model call."""
+        provider_config = self.config.providers.get(self.config.default_provider.value)
+        max_tokens = provider_config.max_tokens if provider_config else 8192
+        temperature = provider_config.temperature if provider_config else 0.0
+
         response = await self.provider.chat(
             messages=self.messages,
             tools=self.registry.to_schemas(),
             model=self.config.default_model,
-            max_tokens=self.config.providers.get(
-                self.config.default_provider.value,
-                self.config.providers.get("openai"),
-            ),
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
         if response.message.token_usage:
             self.total_usage = self.total_usage + response.message.token_usage
@@ -257,10 +271,16 @@ class AgentLoop:
 
     async def _stream_model(self) -> AsyncIterator[StreamChunk]:
         """Streaming model call."""
+        provider_config = self.config.providers.get(self.config.default_provider.value)
+        max_tokens = provider_config.max_tokens if provider_config else 8192
+        temperature = provider_config.temperature if provider_config else 0.0
+
         async for chunk in self.provider.stream_chat(
             messages=self.messages,
             tools=self.registry.to_schemas(),
             model=self.config.default_model,
+            max_tokens=max_tokens,
+            temperature=temperature,
         ):
             yield chunk
 

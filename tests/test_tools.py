@@ -3,25 +3,18 @@
 import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch
-
-# Set workspace env for tests
-TEST_DIR = Path(__file__).parent.parent / "test_workspace"
-TEST_DIR.mkdir(exist_ok=True)
 
 
 @pytest.fixture(autouse=True)
-def setup_workspace():
+def setup_workspace(tmp_path):
     """Create a temporary workspace for file tool tests."""
-    os.environ["OKTIGENT_WORKSPACE"] = str(TEST_DIR)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    os.environ["OKTIGENT_WORKSPACE"] = str(workspace)
     # Create test files
-    (TEST_DIR / "hello.py").write_text("print('hello')\n")
-    (TEST_DIR / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
-    yield
-    # Cleanup
-    for f in TEST_DIR.iterdir():
-        f.unlink()
-    TEST_DIR.rmdir()
+    (workspace / "hello.py").write_text("print('hello')\n")
+    (workspace / "multi.txt").write_text("line1\nline2\nline3\nline4\nline5\n")
+    yield workspace
 
 
 @pytest.mark.asyncio
@@ -46,7 +39,8 @@ async def test_write_file():
     from oktigent.tools.files import write_file
     result = await write_file("new_file.txt", "hello world\n")
     assert "File written" in result
-    assert (TEST_DIR / "new_file.txt").read_text() == "hello world\n"
+    ws = Path(os.environ["OKTIGENT_WORKSPACE"])
+    assert (ws / "new_file.txt").read_text() == "hello world\n"
 
 
 @pytest.mark.asyncio
@@ -54,7 +48,8 @@ async def test_edit_file():
     from oktigent.tools.files import edit_file
     result = await edit_file("hello.py", "print('hello')", "print('world')")
     assert "File edited" in result
-    assert (TEST_DIR / "hello.py").read_text() == "print('world')\n"
+    ws = Path(os.environ["OKTIGENT_WORKSPACE"])
+    assert (ws / "hello.py").read_text() == "print('world')\n"
 
 
 @pytest.mark.asyncio

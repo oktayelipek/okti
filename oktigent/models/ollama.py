@@ -102,14 +102,16 @@ class OllamaProvider(BaseProvider):
 
                     # Tool call streaming (accumulated)
                     for tc_delta in delta.get("tool_calls", []):
+                        func = tc_delta.get("function", {})
+                        # Ollama may send arguments as string or dict
+                        args = func.get("arguments", {})
+                        if isinstance(args, str):
+                            args = {"_raw": args}
                         yield StreamChunk(
                             tool_call_delta=ToolCall(
                                 id=tc_delta.get("id", ""),
-                                name=tc_delta.get("function", {}).get("name", ""),
-                                arguments={
-                                    "_index": tc_delta.get("index", 0),
-                                    **tc_delta.get("function", {}),
-                                },
+                                name=func.get("name", ""),
+                                arguments=args,
                             )
                         )
 

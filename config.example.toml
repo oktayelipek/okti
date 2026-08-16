@@ -1,0 +1,48 @@
+# oktigent configuration file
+# Place at ~/.config/oktigent/config.toml
+
+# Default provider: ollama, openai, anthropic, gemini, deepseek, openrouter, xai
+default_provider = "ollama"
+
+# Default model (provider-specific)
+default_model = "codellama"
+
+# Permissions
+[permissions]
+yolo = false
+# Custom rules (optional):
+# [[permissions.rules]]
+# tool = "run_command"
+# level = "ask"  # allow, ask, deny
+
+# Context management
+[context]
+max_tokens = 128000
+compaction_threshold = 0.75
+background_max_chars = 50000
+
+# Provider configurations
+[providers.ollama]
+base_url = "http://localhost:11434"
+
+[providers.openai]
+# api_key = "sk-..."  # Or set OPENAI_API_KEY env var
+model = "gpt-4o"
+
+[providers.anthropic]
+# api_key = "sk-ant-..."  # Or set ANTHROPIC_API_KEY env var
+model = "claude-sonnet-4-20250514"
+
+[providers.gemini]
+# api_key = "..."  # Or set GOOGLE_API_KEY env var
+model = "gemini-2.5-flash"
+
+[providers.deepseek]
+# api_key = "..."  # Or set DEEPSEEK_API_KEY env var
+model = "deepseek-chat"
+
+[providers.openrouter]
+# api_key = "..."  # Or set OPENROUTER_API_KEY env var
+
+[providers.xai]
+# api_key = "..."  # Or set XAI_API_KEY env var
