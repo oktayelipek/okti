@@ -5,6 +5,7 @@ Provides the agent with full git workflow capabilities.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 from pathlib import Path
@@ -16,8 +17,8 @@ def _get_workspace() -> Path:
     return Path(os.environ.get("OKTIGENT_WORKSPACE", os.getcwd()))
 
 
-def _run_git(*args: str, timeout: int = 30) -> tuple[int, str, str]:
-    """Run a git command and return (exit_code, stdout, stderr)."""
+def _run_git_sync(*args: str, timeout: int = 30) -> tuple[int, str, str]:
+    """Run a git command synchronously and return (exit_code, stdout, stderr)."""
     ws = _get_workspace()
     try:
         result = subprocess.run(
@@ -34,9 +35,14 @@ def _run_git(*args: str, timeout: int = 30) -> tuple[int, str, str]:
         return -1, "", f"git command timed out after {timeout}s"
 
 
+async def _run_git(*args: str, timeout: int = 30) -> tuple[int, str, str]:
+    """Run a git command in a worker thread and return (exit_code, stdout, stderr)."""
+    return await asyncio.to_thread(_run_git_sync, *args, timeout=timeout)
+
+
 async def git_status() -> str:
     """Show working tree status."""
-    code, out, err = _run_git("status", "--short")
+    code, out, err = await _run_git("status", "--short")
     if code != 0:
         return f"Error: {err}"
     if not out:
@@ -51,7 +57,7 @@ async def git_diff(path: str | None = None, staged: bool = False) -> str:
         args.append("--cached")
     if path:
         args.extend(["--", path])
-    code, out, err = _run_git(*args)
+    code, out, err = await _run_git(*args)
     if code != 0:
         return f"Error: {err}"
     if not out:
@@ -66,7 +72,7 @@ async def git_diff(path: str | None = None, staged: bool = False) -> str:
 
 async def git_log(count: int = 10) -> str:
     """Show recent commit log."""
-    code, out, err = _run_git("log", f"--oneline", f"-{count}")
+    code, out, err = await _run_git("log", "--oneline", f"-{count}")
     if code != 0:
         return f"Error: {err}"
     if not out:
@@ -79,7 +85,7 @@ async def git_add(files: str = ".") -> str:
     file_list = [f.strip() for f in files.split(",") if f.strip()]
     if not file_list:
         file_list = ["."]
-    code, out, err = _run_git("add", *file_list)
+    code, out, err = await _run_git("add", *file_list)
     if code != 0:
         return f"Error: {err}"
     return f"Staged: {files}"
@@ -89,7 +95,7 @@ async def git_commit(message: str) -> str:
     """Create a commit with the given message."""
     if not message:
         return "Error: commit message cannot be empty"
-    code, out, err = _run_git("commit", "-m", message)
+    code, out, err = await _run_git("commit", "-m", message)
     if code != 0:
         return f"Error: {err}\n{out}"
     return f"Committed: {message}\n{out}"
@@ -100,7 +106,7 @@ async def git_push(remote: str = "origin", branch: str = "") -> str:
     args = ["push", remote]
     if branch:
         args.append(branch)
-    code, out, err = _run_git(*args, timeout=60)
+    code, out, err = await _run_git(*args, timeout=60)
     if code != 0:
         return f"Error: {err}"
     return f"Pushed to {remote}\n{out}"
@@ -111,7 +117,7 @@ async def git_pull(remote: str = "origin", branch: str = "") -> str:
     args = ["pull", remote]
     if branch:
         args.append(branch)
-    code, out, err = _run_git(*args, timeout=60)
+    code, out, err = await _run_git(*args, timeout=60)
     if code != 0:
         return f"Error: {err}"
     return f"Pulled from {remote}\n{out}"
@@ -119,7 +125,7 @@ async def git_pull(remote: str = "origin", branch: str = "") -> str:
 
 async def git_branch() -> str:
     """List branches."""
-    code, out, err = _run_git("branch", "-a")
+    code, out, err = await _run_git("branch", "-a")
     if code != 0:
         return f"Error: {err}"
     return f"Branches:\n{out}"
@@ -127,7 +133,7 @@ async def git_branch() -> str:
 
 async def git_checkout(branch: str) -> str:
     """Switch to a branch."""
-    code, out, err = _run_git("checkout", branch)
+    code, out, err = await _run_git("checkout", branch)
     if code != 0:
         return f"Error: {err}"
     return f"Switched to branch: {branch}\n{out}"
@@ -135,7 +141,7 @@ async def git_checkout(branch: str) -> str:
 
 async def git_create_branch(name: str) -> str:
     """Create a new branch."""
-    code, out, err = _run_git("checkout", "-b", name)
+    code, out, err = await _run_git("checkout", "-b", name)
     if code != 0:
         return f"Error: {err}"
     return f"Created and switched to branch: {name}"
@@ -146,7 +152,7 @@ async def git_stash(message: str = "") -> str:
     args = ["stash"]
     if message:
         args.extend(["push", "-m", message])
-    code, out, err = _run_git(*args)
+    code, out, err = await _run_git(*args)
     if code != 0:
         return f"Error: {err}"
     return out or "Changes stashed."
@@ -154,7 +160,7 @@ async def git_stash(message: str = "") -> str:
 
 async def git_stash_pop() -> str:
     """Pop the latest stash."""
-    code, out, err = _run_git("stash", "pop")
+    code, out, err = await _run_git("stash", "pop")
     if code != 0:
         return f"Error: {err}"
     return out or "Stash popped."
@@ -162,13 +168,12 @@ async def git_stash_pop() -> str:
 
 async def git_blame(path: str) -> str:
     """Show who last modified each line of a file."""
-    code, out, err = _run_git("blame", "--porcelain", path)
+    code, out, err = await _run_git("blame", "--porcelain", path)
     if code != 0:
         return f"Error: {err}"
     # Parse porcelain format into readable output
     lines = out.splitlines()
     result = []
-    current_hash = ""
     author = ""
     for line in lines:
         if line.startswith("\t"):
@@ -198,7 +203,7 @@ async def git_ignore_add(pattern: str) -> str:
 
 async def git_remote_url() -> str:
     """Show the remote URL."""
-    code, out, err = _run_git("remote", "get-url", "origin")
+    code, out, err = await _run_git("remote", "get-url", "origin")
     if code != 0:
         return f"Error: {err}"
     return f"Remote URL: {out}"
@@ -209,32 +214,32 @@ async def git_status_detailed() -> str:
     parts = []
 
     # Branch
-    code, out, _ = _run_git("branch", "--show-current")
+    code, out, _ = await _run_git("branch", "--show-current")
     if code == 0 and out:
         parts.append(f"Branch: {out}")
 
     # Remote tracking
-    code, out, _ = _run_git("rev-parse", "--abbrev-ref", "@{upstream}")
+    code, out, _ = await _run_git("rev-parse", "--abbrev-ref", "@{upstream}")
     if code == 0 and out:
         parts.append(f"Tracking: {out}")
 
     # Ahead/behind
-    code, out, _ = _run_git("rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+    code, out, _ = await _run_git("rev-list", "--left-right", "--count", "HEAD...@{upstream}")
     if code == 0 and out:
         parts.append(f"Ahead/Behind: {out}")
 
     # Staged
-    code, out, _ = _run_git("diff", "--cached", "--stat")
+    code, out, _ = await _run_git("diff", "--cached", "--stat")
     if code == 0 and out:
         parts.append(f"Staged:\n{out}")
 
     # Unstaged
-    code, out, _ = _run_git("diff", "--stat")
+    code, out, _ = await _run_git("diff", "--stat")
     if code == 0 and out:
         parts.append(f"Unstaged:\n{out}")
 
     # Untracked
-    code, out, _ = _run_git("ls-files", "--others", "--exclude-standard")
+    code, out, _ = await _run_git("ls-files", "--others", "--exclude-standard")
     if code == 0 and out:
         count = len(out.splitlines())
         parts.append(f"Untracked: {count} files")

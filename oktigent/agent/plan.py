@@ -14,7 +14,6 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
-from oktigent.models.provider import Message, Role
 
 logger = logging.getLogger(__name__)
 

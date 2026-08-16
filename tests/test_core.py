@@ -1,8 +1,7 @@
 """Tests for the agent loop and core components."""
 
-import pytest
 from oktigent.config import OktigentConfig, PermissionLevel, ProviderID
-from oktigent.models.provider import Message, Role, ToolCall, TokenUsage, StreamChunk
+from oktigent.models.provider import Message, Role, ToolCall, TokenUsage
 from oktigent.tools.registry import ToolRegistry, ToolDef
 from oktigent.agent.permissions import PermissionManager
 from oktigent.context.manager import ContextManager

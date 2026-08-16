@@ -7,7 +7,7 @@ compact while preserving all necessary information.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from oktigent.config import OktigentConfig
 from oktigent.models.provider import Message, Role
@@ -94,9 +94,6 @@ class ContextManager:
         """
         if not messages:
             return messages
-
-        max_tokens = self.config.context.max_tokens
-        target_tokens = int(max_tokens * 0.5)  # aim for 50% after compaction
 
         # Always keep system prompt
         system_msgs = [m for m in messages if m.role == Role.SYSTEM]

@@ -6,6 +6,7 @@ exact old_string -> new_string replacements, not entire file rewrites.
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import os
 import subprocess
@@ -31,9 +32,11 @@ def _resolve_path(path: str) -> Path:
     return p
 
 
-async def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
-    """Read file contents with optional line range."""
-    resolved = _resolve_path(path)
+def _read_file_sync(path: str, start_line: int = 1, end_line: int | None = None) -> str:
+    try:
+        resolved = _resolve_path(path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not resolved.exists():
         return f"Error: File not found: {path}"
     if resolved.is_dir():
@@ -59,27 +62,48 @@ async def read_file(path: str, start_line: int = 1, end_line: int | None = None)
     return header + "\n" + "\n".join(numbered)
 
 
-async def write_file(path: str, content: str) -> str:
-    """Write content to a file (create or overwrite)."""
-    resolved = _resolve_path(path)
+async def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
+    """Read file contents with optional line range."""
+    return await asyncio.to_thread(_read_file_sync, path, start_line, end_line)
+
+
+def _write_file_sync(path: str, content: str) -> str:
+    try:
+        resolved = _resolve_path(path)
+    except ValueError as e:
+        return f"Error: {e}"
     resolved.parent.mkdir(parents=True, exist_ok=True)
     resolved.write_text(content, encoding="utf-8")
     return f"File written: {path} ({len(content)} chars, {content.count(chr(10)) + 1} lines)"
 
 
-async def edit_file(path: str, old_string: str, new_string: str) -> str:
-    """Diff-based edit: replace exact old_string with new_string.
+async def write_file(path: str, content: str) -> str:
+    """Write content to a file (create or overwrite)."""
+    return await asyncio.to_thread(_write_file_sync, path, content)
 
-    This is the token-efficient core edit tool — the model only sends
-    the exact lines to change, not the entire file.
-    """
-    resolved = _resolve_path(path)
+
+def _edit_file_sync(path: str, old_string: str, new_string: str) -> str:
+    try:
+        resolved = _resolve_path(path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not resolved.exists():
         return f"Error: File not found: {path}"
 
     content = resolved.read_text(encoding="utf-8", errors="replace")
 
+    # If exact old_string is missing, try normalized line endings (\r\n -> \n)
     if old_string not in content:
+        content_norm = content.replace("\r\n", "\n")
+        old_norm = old_string.replace("\r\n", "\n")
+        new_norm = new_string.replace("\r\n", "\n")
+        if old_norm in content_norm:
+            count = content_norm.count(old_norm)
+            if count > 1:
+                return f"Error: old_string found {count} times in {path}. Provide more context to make it unique."
+            new_content = content_norm.replace(old_norm, new_norm, 1)
+            resolved.write_text(new_content, encoding="utf-8")
+            return f"File edited (normalized line endings): {path}"
         return f"Error: old_string not found in {path}. No changes made."
 
     count = content.count(old_string)
@@ -103,12 +127,16 @@ async def edit_file(path: str, old_string: str, new_string: str) -> str:
     return f"File edited: {path} (-{lines_removed} +{lines_added} lines)\n{diff_text}"
 
 
-async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
-    """Apply multiple edits to a single file in one tool call.
+async def edit_file(path: str, old_string: str, new_string: str) -> str:
+    """Diff-based edit: replace exact old_string with new_string."""
+    return await asyncio.to_thread(_edit_file_sync, path, old_string, new_string)
 
-    edits: list of {"old_string": ..., "new_string": ...}
-    """
-    resolved = _resolve_path(path)
+
+def _multi_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
+    try:
+        resolved = _resolve_path(path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not resolved.exists():
         return f"Error: File not found: {path}"
 
@@ -119,6 +147,14 @@ async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
         old = edit.get("old_string", "")
         new = edit.get("new_string", "")
         if old not in content:
+            # Fallback with normalized line endings
+            content_norm = content.replace("\r\n", "\n")
+            old_norm = old.replace("\r\n", "\n")
+            new_norm = new.replace("\r\n", "\n")
+            if old_norm in content_norm:
+                content = content_norm.replace(old_norm, new_norm, 1)
+                results.append(f"Edit {i + 1}: applied (normalized)")
+                continue
             results.append(f"Edit {i + 1}: old_string not found — skipped")
             continue
         content = content.replace(old, new, 1)
@@ -128,13 +164,17 @@ async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
     return f"File: {path} — {len(results)} edits applied\n" + "\n".join(results)
 
 
-async def search_files(
+async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
+    """Apply multiple edits to a single file in one tool call."""
+    return await asyncio.to_thread(_multi_edit_sync, path, edits)
+
+
+def _search_files_sync(
     pattern: str,
     path: str = ".",
     include: str | None = None,
     max_results: int = 30,
 ) -> str:
-    """Search file contents using ripgrep (rg) or grep fallback."""
     ws = _get_workspace()
     target = ws / path
 
@@ -167,8 +207,17 @@ async def search_files(
         return f"Results for: {pattern}\n" + "\n".join(lines)
 
 
-async def glob_files(pattern: str, path: str = ".") -> str:
-    """Find files matching a glob pattern."""
+async def search_files(
+    pattern: str,
+    path: str = ".",
+    include: str | None = None,
+    max_results: int = 30,
+) -> str:
+    """Search file contents using ripgrep (rg) or grep fallback."""
+    return await asyncio.to_thread(_search_files_sync, pattern, path, include, max_results)
+
+
+def _glob_files_sync(pattern: str, path: str = ".") -> str:
     ws = _get_workspace()
     target = ws / path
     matches = sorted(target.glob(pattern))
@@ -176,22 +225,28 @@ async def glob_files(pattern: str, path: str = ".") -> str:
     if not matches:
         return f"No files matched pattern: {pattern}"
 
-    ws_str = str(ws)
     lines = []
     for m in matches[:200]:
-        rel = str(m.relative_to(ws))
+        try:
+            rel = str(m.relative_to(ws))
+        except ValueError:
+            rel = str(m)
         if m.is_dir():
             rel += "/"
         lines.append(rel)
 
     header = f"Found {len(matches)} matches"
     if len(matches) > 200:
-        header += f" (showing 200)"
+        header += " (showing 200)"
     return header + "\n" + "\n".join(lines)
 
 
-async def list_dir(path: str = ".") -> str:
-    """List directory contents with type indicators."""
+async def glob_files(pattern: str, path: str = ".") -> str:
+    """Find files matching a glob pattern."""
+    return await asyncio.to_thread(_glob_files_sync, pattern, path)
+
+
+def _list_dir_sync(path: str = ".") -> str:
     ws = _get_workspace()
     target = ws / path
     if not target.exists():
@@ -206,16 +261,24 @@ async def list_dir(path: str = ".") -> str:
         if entry.is_dir():
             lines.append(f"  {name}/")
         else:
-            size = entry.stat().st_size
-            if size < 1024:
-                size_str = f"{size}B"
-            elif size < 1024 * 1024:
-                size_str = f"{size / 1024:.1f}KB"
-            else:
-                size_str = f"{size / (1024 * 1024):.1f}MB"
+            try:
+                size = entry.stat().st_size
+                if size < 1024:
+                    size_str = f"{size}B"
+                elif size < 1024 * 1024:
+                    size_str = f"{size / 1024:.1f}KB"
+                else:
+                    size_str = f"{size / (1024 * 1024):.1f}MB"
+            except Exception:
+                size_str = "unknown"
             lines.append(f"  {name} ({size_str})")
 
     return f"Directory: {path}\n" + "\n".join(lines)
+
+
+async def list_dir(path: str = ".") -> str:
+    """List directory contents with type indicators."""
+    return await asyncio.to_thread(_list_dir_sync, path)
 
 
 def register_file_tools(registry: ToolRegistry) -> None:

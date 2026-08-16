@@ -9,8 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 from oktigent.tools.registry import ToolDef, ToolRegistry
@@ -40,9 +38,6 @@ async def run_command(
     timeout = min(timeout, MAX_TIMEOUT_SECONDS)
 
     try:
-        # Use shell=True on Windows, False on Unix for safety
-        use_shell = sys.platform == "win32"
-
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
@@ -86,7 +81,7 @@ async def run_command(
         if len(output) > MAX_OUTPUT_CHARS:
             truncated = output[:MAX_OUTPUT_CHARS]
             output = truncated + f"\n\n... [TRUNCATED: full output is {len(output)} chars]"
-            output += f"\nTip: Use read_file to inspect specific files, or redirect output."
+            output += "\nTip: Use read_file to inspect specific files, or redirect output."
 
         return output
 

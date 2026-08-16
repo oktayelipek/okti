@@ -17,9 +17,9 @@ import logging
 from typing import Any, AsyncIterator, Callable
 
 from oktigent.agent.permissions import PermissionManager
+from oktigent.agent.prompts import load_system_prompt
 from oktigent.config import OktigentConfig, PermissionLevel, ProviderID
 from oktigent.context.manager import ContextManager
-from oktigent.context.memory import load_project_memory, build_memory_prompt
 from oktigent.models.factory import create_provider
 from oktigent.models.provider import (
     BaseProvider,
@@ -36,41 +36,6 @@ logger = logging.getLogger(__name__)
 
 # Default max turns per conversation
 DEFAULT_MAX_TURNS = 50
-
-# Provider-specific system prompts
-_SYSTEM_PROMPT_TEMPLATE = """You are oktigent, an elite AI coding agent. You are an expert software engineer working in a terminal environment.
-
-## Core Capabilities
-- Read, write, and edit files (prefer diff-based edits with edit_file for token efficiency)
-- Search codebases with regex and glob patterns
-- Execute shell commands (tests, builds, git, etc.)
-- Fetch web content for documentation
-- Git operations (status, diff, commit, push, pull, branch)
-- MCP external tool integration
-
-## Operating Principles
-1. **Plan before acting**: Understand the full scope before making changes
-2. **Diff-based edits**: Always use edit_file (not write_file) when modifying existing files. Send only the exact lines to change.
-3. **Verify your work**: Run tests or builds after making changes
-4. **Be precise**: Use exact file paths and line references
-5. **Be concise**: Minimize your output while being complete
-6. **Token efficiency**: Keep tool call arguments minimal. Use multi_edit for multiple changes in one file.
-
-## File Operations
-- Use read_file with line ranges to inspect code (don't read entire large files)
-- Use search_files to find code patterns
-- Use edit_file for surgical edits (preferred over write_file)
-- Use multi_edit for multiple changes to the same file
-
-## Git Workflow
-- Use git_status_detailed to check repo state
-- Use git_diff before committing to review changes
-- Use git_add + git_commit for atomic commits
-- Write clear commit messages
-
-{memory_section}
-
-You have access to tools. When the user asks you to do something, use the appropriate tools to accomplish it. Always explain what you're doing briefly before and after tool calls."""
 
 
 class AgentLoop:
@@ -118,10 +83,9 @@ class AgentLoop:
         return registry
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt with project memory."""
-        memory = load_project_memory(self.config.workspace_dir)
-        memory_section = build_memory_prompt(memory) if memory else ""
-        return _SYSTEM_PROMPT_TEMPLATE.format(memory_section=memory_section)
+        """Build the system prompt with provider-specific template and project memory."""
+        provider_name = self.config.default_provider.value if hasattr(self.config.default_provider, "value") else str(self.config.default_provider)
+        return load_system_prompt(provider_name, self.config.workspace_dir)
 
     def on(self, event: str, callback: Callable) -> None:
         """Register an event callback.
@@ -182,6 +146,38 @@ class AgentLoop:
         except Exception as e:
             logger.debug("MCP initialization skipped: %s", e)
 
+    async def _execute_tools(self, tool_calls: list[ToolCall]) -> list[str]:
+        """Execute a list of tool calls, check permissions, and record results."""
+        results: list[str] = []
+        for tc in tool_calls:
+            level = self.permissions.check(tc.name)
+            if level == PermissionLevel.DENY:
+                result = f"Permission denied: {tc.name}"
+            elif level == PermissionLevel.ASK:
+                approved = self._emit(
+                    "permission_ask",
+                    tool=tc.name,
+                    arguments=tc.arguments,
+                )
+                if approved is False:
+                    result = f"Permission denied by user: {tc.name}"
+                else:
+                    self._emit("tool_start", tool=tc.name, arguments=tc.arguments)
+                    result = await self.registry.call(tc.name, tc.arguments)
+                    self._emit("tool_end", tool=tc.name, content=result)
+            else:
+                self._emit("tool_start", tool=tc.name, arguments=tc.arguments)
+                result = await self.registry.call(tc.name, tc.arguments)
+                self._emit("tool_end", tool=tc.name, content=result)
+
+            self.messages.append(Message(
+                role=Role.TOOL,
+                content=result,
+                tool_call_id=tc.id,
+            ))
+            results.append(result)
+        return results
+
     async def run_single(self, user_input: str) -> str:
         """Run a single user turn (non-interactive mode). Returns final response."""
         self.messages.append(Message(role=Role.USER, content=user_input))
@@ -189,10 +185,10 @@ class AgentLoop:
         for turn in range(self._max_turns):
             response = await self._call_model()
 
-            if not response.tool_calls:
-                return response.content
+            if not response.message.tool_calls:
+                return response.message.content
 
-            await self._execute_tools(response.tool_calls)
+            await self._execute_tools(response.message.tool_calls)
 
         return "[Max turns reached]"
 

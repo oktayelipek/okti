@@ -1,10 +1,8 @@
 """Tests for git tools."""
 
 import pytest
-from pathlib import Path
 from oktigent.tools.git_tools import (
-    git_status, git_diff, git_log, git_add, git_commit,
-    git_branch, git_status_detailed, register_git_tools,
+    git_status, git_diff, git_log, git_branch, git_status_detailed, register_git_tools,
 )
 from oktigent.tools.registry import ToolRegistry
 

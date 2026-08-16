@@ -25,7 +25,6 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import Any
 
 from oktigent.tools.registry import ToolDef, ToolRegistry
 

@@ -1,11 +1,9 @@
 """Tests for session auto-save, resume, and incremental save."""
 
 import pytest
-import asyncio
-from pathlib import Path
 from oktigent.config import OktigentConfig
 from oktigent.storage.db import Storage
-from oktigent.models.provider import Message, Role, ToolCall
+from oktigent.models.provider import Message, Role
 
 
 @pytest.fixture
@@ -37,7 +35,7 @@ async def test_get_latest_session_empty(storage):
 @pytest.mark.asyncio
 async def test_get_latest_session(storage):
     """Returns the most recently updated session."""
-    sid1 = await storage.create_session(name="first", workspace="/tmp")
+    _ = await storage.create_session(name="first", workspace="/tmp")
     sid2 = await storage.create_session(name="second", workspace="/tmp")
 
     latest = await storage.get_latest_session()
@@ -49,7 +47,7 @@ async def test_get_latest_session(storage):
 async def test_get_latest_session_by_workspace(storage):
     """Filters by workspace."""
     sid1 = await storage.create_session(name="proj-a", workspace="/a")
-    sid2 = await storage.create_session(name="proj-b", workspace="/b")
+    _ = await storage.create_session(name="proj-b", workspace="/b")
 
     latest = await storage.get_latest_session(workspace="/a")
     assert latest is not None

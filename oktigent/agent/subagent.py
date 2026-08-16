@@ -72,6 +72,7 @@ class SubagentRunner:
             registry=filtered,
             system_prompt=config.system_prompt,
         )
+        child_loop.provider = self.parent_loop.provider
         child_loop.messages = messages
 
         # Run the loop
@@ -81,12 +82,12 @@ class SubagentRunner:
             for turn in range(config.max_turns):
                 turn_count = turn + 1
                 response = await child_loop._call_model()
-                last_content = response.content
+                last_content = response.message.content
 
-                if not response.tool_calls:
+                if not response.message.tool_calls:
                     break
 
-                await child_loop._execute_tools(response.tool_calls)
+                await child_loop._execute_tools(response.message.tool_calls)
 
             # Try to parse structured output
             structured = None

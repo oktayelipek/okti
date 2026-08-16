@@ -1,9 +1,8 @@
 """Tests for agent loop and streaming."""
 
-import pytest
 from oktigent.agent.loop import AgentLoop, StreamEvent
-from oktigent.config import OktigentConfig, ProviderID
-from oktigent.models.provider import Message, Role, ToolCall, TokenUsage, StreamChunk
+from oktigent.config import OktigentConfig
+from oktigent.models.provider import Message, Role, ToolCall
 from oktigent.tools.registry import ToolRegistry, ToolDef
 
 

@@ -1,10 +1,8 @@
 """Tests for MCP client and plugin system."""
 
-import pytest
-from pathlib import Path
 from oktigent.tools.mcp_client import MCPClient, MCPServerConfig, MCPTool, load_mcp_config
 from oktigent.tools.plugin import load_plugin, discover_plugins, load_all_plugins, create_plugin_template
-from oktigent.tools.registry import ToolRegistry, ToolDef
+from oktigent.tools.registry import ToolRegistry
 
 
 # ---------------------------------------------------------------------------

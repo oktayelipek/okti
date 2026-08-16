@@ -65,13 +65,21 @@ oktigent --model openai/gpt-4o
 |---------|-------------|
 | `/help` | Show help |
 | `/plan <scope>` | Create a development plan |
+| `/approve` | Approve and execute plan tasks |
 | `/models` | List available models |
 | `/provider <id>` | Switch provider |
 | `/yolo` | Toggle yolo mode (bypass permissions) |
 | `/clear` | Clear chat history |
-| `/session` | Show session info |
+| `/session` | Show current session info |
+| `/sessions` | List recent sessions |
+| `/save` | Save current session |
+| `/load <id>` | Load a session by ID |
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |
+| `/refresh` | Refresh file tree |
+| `/git <subcmd>` | Git operations (status, diff, log, commit, push, branch) |
+| `/mcp <list|help>` | MCP server and tool management |
+| `/plugin <list|create|help>` | Plugin management |
 
 ## Configuration
 

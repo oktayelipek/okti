@@ -24,12 +24,11 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Header, Input, Label, Static
-from textual.worker import WorkerState
 
 from oktigent.agent.loop import AgentLoop, StreamEvent
-from oktigent.config import OktigentConfig, PermissionLevel
+from oktigent.config import OktigentConfig
 from oktigent.tui.streaming import StreamingMarkdown
-from oktigent.tui.widgets import FileTree, DiffViewer
+from oktigent.tui.widgets import FileTree
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +205,7 @@ class SlashCommandHandler:
         handlers = {
             "/help": self._help,
             "/plan": self._plan,
+            "/approve": self._approve,
             "/models": self._models,
             "/provider": self._provider,
             "/yolo": self._yolo,
@@ -235,6 +235,7 @@ class SlashCommandHandler:
 |---------|-------------|
 | `/help` | Show this help |
 | `/plan <scope>` | Create a development plan |
+| `/approve` | Approve and execute plan tasks |
 | `/models` | List available models |
 | `/provider <id>` | Switch provider |
 | `/yolo` | Toggle yolo mode (bypass permissions) |
@@ -250,6 +251,28 @@ class SlashCommandHandler:
 | `/mcp` | MCP server management |
 | `/plugin` | Plugin management |"""
         self.app.chat_pane.add_assistant_message(help_text)
+
+    async def _approve(self, args: str) -> None:
+        """Approve and execute tasks from current plan."""
+        plan = self.app.agent._current_plan
+        if not plan:
+            self.app.chat_pane.add_status("No active plan to approve. Use /plan <scope> first.", style="dim")
+            return
+
+        pending = plan.pending_tasks()
+        if not pending:
+            self.app.chat_pane.add_status("All tasks in the plan are already completed.", style="green")
+            return
+
+        task = pending[0]
+        from oktigent.agent.plan import build_task_prompt, TaskStatus
+        task.status = TaskStatus.IN_PROGRESS
+        self.app.chat_pane.add_status(f"Executing task [{task.id}]: {task.title}...", style="bold cyan")
+        prompt = build_task_prompt(task, plan.summary)
+        self.app.chat_pane.add_user_message(f"Execute plan task: {task.title}")
+        self.app.tool_dock.update_status(f"Task: {task.id}")
+        self.app.run_worker(self.app._run_agent(prompt), exclusive=True)
+        task.status = TaskStatus.COMPLETED
 
     async def _plan(self, args: str) -> None:
         if not args:
@@ -515,7 +538,7 @@ class SlashCommandHandler:
     async def _git(self, args: str) -> None:
         """Git operations."""
         from oktigent.tools.git_tools import (
-            git_status, git_diff, git_log, git_add, git_commit,
+            git_diff, git_log, git_add, git_commit,
             git_push, git_branch, git_status_detailed, git_remote_url,
         )
 
@@ -570,7 +593,6 @@ class SlashCommandHandler:
         """MCP server management."""
         parts = args.strip().split(maxsplit=1)
         subcmd = parts[0] if parts else "list"
-        subargs = parts[1] if len(parts) > 1 else ""
 
         if subcmd == "list":
             mcp_client = self.app.agent.mcp_client
@@ -864,17 +886,16 @@ class OktigentApp(App):
 
         # Check for slash commands
         if text.startswith("/"):
-            # Special approve command
-            if text.strip().lower() == "/approve":
-                self._permission_result = True
-                if self._permission_event:
+            # Special approve/deny command when permission dialog is active
+            if self._permission_event and not self._permission_event.is_set():
+                if text.strip().lower() == "/approve":
+                    self._permission_result = True
                     self._permission_event.set()
-                return
-            if text.strip().lower() == "/deny":
-                self._permission_result = False
-                if self._permission_event:
+                    return
+                if text.strip().lower() == "/deny":
+                    self._permission_result = False
                     self._permission_event.set()
-                return
+                    return
 
             handled = await self.slash_handler.handle(text)
             if handled:
@@ -980,7 +1001,6 @@ class OktigentApp(App):
 
             # Only save new messages (skip already-stored ones)
             stored_count = await storage.get_message_count(self.agent.session_id)
-            total = len(self.agent.messages)
             new_messages = self.agent.messages[stored_count:]
 
             for msg in new_messages:

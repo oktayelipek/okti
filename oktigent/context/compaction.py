@@ -77,7 +77,7 @@ async def compact_with_model(
             temperature=0.0,
         )
         return response.message.content
-    except Exception as e:
+    except Exception:
         logger.exception("Compaction failed")
         # Fallback: simple truncation summary
         return _simple_summary(messages)

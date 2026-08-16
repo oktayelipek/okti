@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from oktigent.config import OktigentConfig, ProviderID
+from oktigent.config import OktigentConfig
 from oktigent.models.provider import BaseProvider
 
 logger = logging.getLogger(__name__)

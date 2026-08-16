@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 from rich.text import Text
-from textual import on, work
 from textual.reactive import reactive
 from textual.widgets import Static, Tree
 from textual.widgets.tree import TreeNode
