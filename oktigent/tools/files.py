@@ -32,7 +32,12 @@ def _resolve_path(path: str) -> Path:
     return p
 
 
-def _read_file_sync(path: str, start_line: int = 1, end_line: int | None = None) -> str:
+def _read_file_sync(
+    path: str,
+    start_line: int = 1,
+    end_line: int | None = None,
+    hash_anchored: bool = False,
+) -> str:
     try:
         resolved = _resolve_path(path)
     except ValueError as e:
@@ -53,21 +58,30 @@ def _read_file_sync(path: str, start_line: int = 1, end_line: int | None = None)
     end_idx = min(total, end_line)
     chunk = lines[start_idx:end_idx]
 
-    # Add line numbers
-    numbered = []
-    for i, line in enumerate(chunk, start=start_idx + 1):
-        numbered.append(f"{i}: {line.rstrip()}")
+    # Add line numbers or hash anchors
+    if hash_anchored:
+        from oktigent.tools.hashline import render_hash_anchored_lines
+        numbered = render_hash_anchored_lines("".join(chunk), start_line=start_idx + 1)
+    else:
+        numbered = []
+        for i, line in enumerate(chunk, start=start_idx + 1):
+            numbered.append(f"{i}: {line.rstrip()}")
 
     header = f"File: {path} (lines {start_idx + 1}-{end_idx} of {total})"
     return header + "\n" + "\n".join(numbered)
 
 
-async def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
-    """Read file contents with optional line range, or resolve virtual URIs (diff://, git://, rule://, skill://, conflict://)."""
+async def read_file(
+    path: str,
+    start_line: int = 1,
+    end_line: int | None = None,
+    hash_anchored: bool = False,
+) -> str:
+    """Read file contents with optional line range or hash anchors, or resolve virtual URIs."""
     from oktigent.tools.vfs import is_virtual_uri, resolve_virtual_uri
     if is_virtual_uri(path):
         return await resolve_virtual_uri(path)
-    return await asyncio.to_thread(_read_file_sync, path, start_line, end_line)
+    return await asyncio.to_thread(_read_file_sync, path, start_line, end_line, hash_anchored)
 
 
 def _write_file_sync(path: str, content: str) -> str:
@@ -170,6 +184,39 @@ def _multi_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
 async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
     """Apply multiple edits to a single file in one tool call."""
     return await asyncio.to_thread(_multi_edit_sync, path, edits)
+
+
+def _hash_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
+    try:
+        resolved = _resolve_path(path)
+    except ValueError as e:
+        return f"Error: {e}"
+    if not resolved.exists():
+        return f"Error: File not found: {path}"
+
+    content = resolved.read_text(encoding="utf-8", errors="replace")
+    from oktigent.tools.hashline import HashAnchorEdit, apply_hash_edits
+
+    parsed_edits = [
+        HashAnchorEdit(
+            start_anchor=e.get("start_anchor", ""),
+            end_anchor=e.get("end_anchor", ""),
+            replacement=e.get("replacement", ""),
+        )
+        for e in edits
+    ]
+
+    success, new_content, err = apply_hash_edits(content, parsed_edits)
+    if not success:
+        return f"Hash edit failed on {path}: {err}"
+
+    resolved.write_text(new_content, encoding="utf-8")
+    return f"Successfully applied {len(edits)} hash-anchored edit(s) to {path}"
+
+
+async def hash_edit_file(path: str, edits: list[dict[str, str]]) -> str:
+    """Apply surgical edits to a file using hash anchors [hash:line]."""
+    return await asyncio.to_thread(_hash_edit_sync, path, edits)
 
 
 def _search_files_sync(
@@ -356,6 +403,33 @@ def register_file_tools(registry: ToolRegistry) -> None:
             "required": ["path", "edits"],
         },
         handler=multi_edit,
+        risk_level="medium",
+    ))
+
+    registry.register(ToolDef(
+        name="hash_edit_file",
+        description="Apply surgical edits using hash anchors (e.g. start_anchor='a1f:10', end_anchor='b2c:12'). Highly resistant to line drift and whitespace mismatch.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to workspace"},
+                "edits": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start_anchor": {"type": "string", "description": "Start anchor like 'a1f:10' or 'a1f'"},
+                            "end_anchor": {"type": "string", "description": "End anchor like 'b2c:15' or 'b2c'"},
+                            "replacement": {"type": "string", "description": "Replacement code content"},
+                        },
+                        "required": ["start_anchor", "end_anchor", "replacement"],
+                    },
+                    "description": "List of hash-anchored edits",
+                },
+            },
+            "required": ["path", "edits"],
+        },
+        handler=hash_edit_file,
         risk_level="medium",
     ))
 

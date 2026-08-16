@@ -38,6 +38,7 @@ SLASH_COMMANDS = [
     ("/setup", "Open onboarding & setup wizard"),
     ("/theme", "Switch color theme (synthwave, matrix, cyberpunk, nord)"),
     ("/rules", "Show active project rules (Cursor, Cline, Copilot, AGENTS.md)"),
+    ("/review", "Run AI code review with P0-P3 ranking and SHIP/DO NOT SHIP verdict"),
     ("/plan", "Create a development plan for a goal"),
     ("/approve", "Approve and execute plan tasks"),
     ("/models", "List available models for current provider"),
@@ -305,6 +306,7 @@ class SlashCommandHandler:
             "/help": self._help,
             "/theme": self._theme,
             "/rules": self._rules,
+            "/review": self._review,
             "/setup": self._setup,
             "/onboard": self._setup,
             "/plan": self._plan,
@@ -336,6 +338,26 @@ class SlashCommandHandler:
         from oktigent.agent.rules import load_universal_rules, render_rules_markdown
         rules = load_universal_rules()
         self.app.chat_pane.add_assistant_message(render_rules_markdown(rules))
+
+    async def _review(self, args: str) -> None:
+        """Run smart code review on git changes with P0-P3 ranking and SHIP verdict."""
+        self.app.chat_pane.add_status("Running code review on workspace changes...", style="bold cyan")
+        self.app.tool_dock.update_status("Reviewing...")
+        try:
+            from oktigent.tools.vfs import resolve_virtual_uri
+            diff_text = await resolve_virtual_uri("diff://")
+
+            from oktigent.agent.reviewer import perform_code_review, render_review_markdown
+            verdict = await perform_code_review(
+                provider=self.app.agent.provider,
+                model=self.app.config.default_model,
+                git_diff=diff_text,
+            )
+            self.app.chat_pane.add_assistant_message(render_review_markdown(verdict))
+            self.app.tool_dock.update_status("Ready")
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Review error: {e}", style="bold red")
+            self.app.tool_dock.update_status("Error")
 
     async def _help(self, args: str) -> None:
         help_text = """## Slash Commands

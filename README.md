@@ -68,6 +68,7 @@ oktigent --model openai/gpt-4o
 |---------|-------------|
 | `/help` | Show help |
 | `/rules` | View active project rules (Cursor `.cursorrules`/`.mdc`, Cline, Copilot, `AGENTS.md`) |
+| `/review` | Run AI code review with P0-P3 ranking and SHIP/DO NOT SHIP verdict |
 | `/theme <name>` | Change visual theme (`synthwave`, `matrix`, `cyberpunk`, `nord`) |
 | `/setup` | Open interactive onboarding & setup wizard |
 | `/plan <scope>` | Create a development plan |
@@ -79,6 +80,17 @@ oktigent --model openai/gpt-4o
 | `/session` | Show current session info |
 | `/sessions` | List recent sessions |
 | `/save` | Save current session |
+| `/load <id>` | Load a session by ID |
+| `/tokens` | Show token usage |
+| `/compact` | Force context compaction |
+| `/refresh` | Refresh file tree |
+
+## Hashline: Hash-Anchored Surgical Code Editing
+
+`oktigent` supports content-hash line editing via `hash_edit_file`:
+- Inspect code with anchors: `read_file("file.py", hash_anchored=True)` -> `[a1f:10] def hello():`
+- Edit by anchor range: `hash_edit_file("file.py", edits=[{"start_anchor": "a1f:10", "end_anchor": "b2c:12", "replacement": "..."}])`
+- Eliminates whitespace mismatch loops and saves up to 60% output tokens.
 
 ## Virtual Filesystem (VFS) URI Schemes
 
@@ -89,10 +101,6 @@ Read live context transparently through `read_file` without learning separate to
 - `rule://all` / `rule://cursor`: View active workspace instructions and rules
 - `skill://<name>`: Inspect agent skills
 - `conflict://list`: Inspect unresolved git merge conflicts
-| `/load <id>` | Load a session by ID |
-| `/tokens` | Show token usage |
-| `/compact` | Force context compaction |
-| `/refresh` | Refresh file tree |
 | `/git <subcmd>` | Git operations (status, diff, log, commit, push, branch) |
 | `/mcp <list|help>` | MCP server and tool management |
 | `/plugin <list|create|help>` | Plugin management |
