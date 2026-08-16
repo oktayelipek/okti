@@ -211,7 +211,7 @@ class AgentLoop:
         for turn in range(self._max_turns):
             # Check context size
             if self.context.needs_compaction(self.messages):
-                self.messages = self.context.compact_messages(
+                self.messages = await self.context.compact_messages(
                     self.messages, provider=self.provider, model=self.config.default_model
                 )
                 yield StreamEvent(type="compaction", content="Context compacted for efficiency.")

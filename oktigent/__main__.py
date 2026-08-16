@@ -9,10 +9,34 @@ import sys
 from pathlib import Path
 
 
-def _configure_logging(verbose: bool = False) -> None:
+def _configure_logging(verbose: bool = False, tui_mode: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    logging.basicConfig(level=level, format=fmt, stream=sys.stderr)
+
+    # TUI mode: log to file to avoid corrupting the terminal UI
+    # Non-interactive / verbose: log to stderr
+    if tui_mode and verbose:
+        import tempfile
+        log_path = Path(tempfile.gettempdir()) / "oktigent_debug.log"
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setFormatter(logging.Formatter(fmt))
+        logging.basicConfig(level=level, handlers=[handler])
+        # Also print the log path so user knows where to find it
+        print(f"[oktigent] Debug log: {log_path}", file=sys.stderr)
+    else:
+        logging.basicConfig(level=level, format=fmt, stream=sys.stderr)
+
+    # Suppress noisy third-party loggers — only show warnings+
+    for noisy in ("markdown_it", "markdown_it.rules_block", "markdown_it.token",
+                   "textual", "httpx", "httpcore", "urllib3",
+                   "asyncio", "pydantic", "rich", "aiosqlite",
+                   "urllib3.connectionpool"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # Our app loggers: always show DEBUG when verbose, INFO otherwise
+    for pkg in ("oktigent", "oktigent.agent", "oktigent.models", "oktigent.tools",
+                 "oktigent.context", "oktigent.tui", "oktigent.storage"):
+        logging.getLogger(pkg).setLevel(level)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -86,7 +110,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    _configure_logging(args.verbose)
+    is_tui = not (args.prompt or args.non_interactive)
+    _configure_logging(args.verbose, tui_mode=is_tui)
 
     # If direct prompt is given, run non-interactive mode
     if args.prompt or args.non_interactive:

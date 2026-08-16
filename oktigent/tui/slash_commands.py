@@ -343,7 +343,7 @@ class SlashCommandHandler:
 
     async def _compact(self, args: str) -> None:
         self.app.chat_pane.add_status("Compacting context with model...")
-        self.app.agent.messages = self.app.agent.context.compact_messages(
+        self.app.agent.messages = await self.app.agent.context.compact_messages(
             self.app.agent.messages,
             provider=self.app.agent.provider,
             model=self.app.config.default_model,

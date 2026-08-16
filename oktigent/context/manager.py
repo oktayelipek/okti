@@ -112,7 +112,7 @@ class ContextManager:
         lines.append("\nTo read a background reference, use read_file on the original path or ask for ref content.")
         return "\n".join(lines)
 
-    def compact_messages(self, messages: list[Message], provider: Any = None, model: str | None = None) -> list[Message]:
+    async def compact_messages(self, messages: list[Message], provider: Any = None, model: str | None = None) -> list[Message]:
         """Compact messages by summarizing older messages.
 
         If provider is given, uses model-based compaction for better quality.
@@ -135,20 +135,8 @@ class ContextManager:
         # Try model-based compaction if provider available
         if provider is not None:
             try:
-                import asyncio
                 from oktigent.context.compaction import compact_with_model
-
-                # Run the async compaction in a sync context if needed
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're inside an async context, use a task
-                    summary_text = asyncio.ensure_future(
-                        compact_with_model(older, provider, model)
-                    )
-                else:
-                    summary_text = loop.run_until_complete(
-                        compact_with_model(older, provider, model)
-                    )
+                summary_text = await compact_with_model(older, provider, model)
             except Exception:
                 # Fallback to simple summary
                 summary_text = self._simple_summary(older)
