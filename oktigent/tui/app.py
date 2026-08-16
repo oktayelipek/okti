@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
@@ -175,68 +176,164 @@ class ChatPane(VerticalScroll):
         self.scroll_end(animate=False)
 
 
+def get_git_info(cwd: Path) -> str:
+    """Get compact git branch and uncommitted change count."""
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(cwd),
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=0.5,
+        ).strip()
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=str(cwd),
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=0.5,
+        ).strip()
+        diff_count = len([line for line in status.splitlines() if line.strip()])
+        if diff_count > 0:
+            return f"ᚠ {branch} +{diff_count}"
+        return f"ᚠ {branch}"
+    except Exception:
+        return ""
+
+
+def get_short_cwd(cwd: Path) -> str:
+    """Get compact path representation."""
+    try:
+        home = Path.home()
+        rel = cwd.relative_to(home)
+        return f"~/{rel}" if len(str(rel)) <= 25 else f".../{cwd.name}"
+    except Exception:
+        return cwd.name or str(cwd)
+
+
 class ToolDock(Static):
-    """Top status HUD showing model, status, latency, speedometer, cache, cost and token metrics."""
+    """Segmented Powerline HUD bar with model, speed, cwd, git, context window, cost, and live task."""
 
     state = reactive("idle")
     status_text = reactive("Ready")
     model_text = reactive("")
-    speed_text = reactive("⏱️ 0.0s")
-    cache_text = reactive("💾 0% cache")
-    cost_text = reactive("💰 $0.00")
-    token_text = reactive("📊 0 tok")
-    mascot_text = reactive("(•‿•)")
+    speed_text = reactive("")
+    cache_pct = reactive(0)
+    cost_usd = reactive(0.0)
+    tokens_used = reactive(0)
+    max_tokens = reactive(200_000)
+    current_task = reactive("Ready")
+    git_info = reactive("")
+    short_cwd = reactive("")
 
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
         self._spinner_idx = 0
         from oktigent.tui.animations import Speedometer
         self.speedometer = Speedometer()
+        self._update_env_info()
+
+    def _update_env_info(self) -> None:
+        try:
+            cwd = Path.cwd()
+            self.short_cwd = get_short_cwd(cwd)
+            self.git_info = get_git_info(cwd)
+        except Exception:
+            pass
 
     def on_mount(self) -> None:
         self.set_interval(0.1, self._spin)
+        self.set_interval(3.0, self._update_env_info)
 
     def _spin(self) -> None:
         from oktigent.tui.animations import BRAILLE_SPINNER
         if self.state in ("thinking", "tool"):
             self._spinner_idx = (self._spinner_idx + 1) % len(BRAILLE_SPINNER)
-            sp = BRAILLE_SPINNER[self._spinner_idx]
-            try:
-                self.query_one("#dock-spinner", Static).update(Text(sp, style="bold cyan"))
-            except Exception:
-                pass
             if self.speedometer.start_time:
                 spd = self.speedometer.speed()
                 el = self.speedometer.elapsed()
                 if spd > 0:
-                    self.speed_text = f"⏱️ {el:.1f}s · ⚡ {spd:.1f} tok/s"
+                    self.speed_text = f"⚡ {spd:.0f}t/s · {el:.1f}s"
                 else:
                     self.speed_text = f"⏱️ {el:.1f}s"
+            self.refresh()
         else:
-            try:
-                self.query_one("#dock-spinner", Static).update(Text("●", style="dim green"))
-            except Exception:
-                pass
+            self.refresh()
 
-    def compose(self) -> ComposeResult:
-        with Horizontal(id="ribbon-container"):
-            with Horizontal(id="ribbon-left"):
-                yield Static("✨ oktigent", id="brand-pill")
-                yield Static(self.model_text or "Ready", id="model-pill")
-            with Horizontal(id="ribbon-center"):
-                yield Static("●", id="dock-spinner")
-                yield Static(self.status_text, id="status")
-                yield Static(self.mascot_text, id="mascot-display")
-            with Horizontal(id="ribbon-right"):
-                yield Static(self.speed_text, id="speedometer-display", classes="metric-pill")
-                yield Static(self.cache_text, id="cache-display", classes="metric-pill")
-                yield Static(self.cost_text, id="cost-display", classes="metric-pill")
-                yield Static(self.token_text, id="token-display", classes="metric-pill")
+    def render(self) -> Text:
+        from oktigent.tui.animations import BRAILLE_SPINNER
+        t = Text()
+
+        # 1. Left corner bracket & Agent Brand
+        t.append("╭─ ", style="bold #22c55e")
+        t.append("π", style="bold #38bdf8")
+        t.append(" 〉", style="dim #475569")
+
+        # 2. Model & Provider
+        m_str = self.model_text or "Ready"
+        if "/" in m_str:
+            parts = m_str.split("/")
+            m_name = parts[-1]
+            display_model = f"⚙ {m_name.strip()}"
+        else:
+            display_model = f"⚙ {m_str}"
+        t.append(display_model, style="bold #818cf8")
+        if self.speed_text:
+            t.append(f" {self.speed_text}", style="#38bdf8")
+        t.append(" 〉", style="dim #475569")
+
+        # 3. CWD
+        if self.short_cwd:
+            t.append(f"📁 {self.short_cwd}", style="#94a3b8")
+            t.append(" 〉", style="dim #475569")
+
+        # 4. Git branch & diffs
+        if self.git_info:
+            t.append(self.git_info, style="bold #f59e0b")
+            t.append(" 〉", style="dim #475569")
+
+        # 5. Context window % & Cache
+        pct = (self.tokens_used / max(self.max_tokens, 1)) * 100
+        ctx_info = f"🪟 {pct:.1f}%/{self.max_tokens//1000}k"
+        if self.cache_pct > 0:
+            ctx_info += f" 💾{self.cache_pct}%"
+        t.append(ctx_info, style="#a78bfa")
+        t.append(" 〉", style="dim #475569")
+
+        # 6. Cost USD
+        if self.cost_usd == 0.0:
+            cost_s = "🆓 $0.00"
+        elif self.cost_usd < 0.01:
+            cost_s = f"${self.cost_usd:.4f}"
+        else:
+            cost_s = f"${self.cost_usd:.2f}"
+        t.append(cost_s, style="bold #fbbf24")
+
+        # 7. Dynamic line and Task/Status at the right
+        status_disp = ""
+        if self.state in ("thinking", "tool"):
+            sp = BRAILLE_SPINNER[self._spinner_idx]
+            status_disp = f" {sp} {self.status_text} "
+        elif self.status_text and self.status_text != "Ready":
+            status_disp = f" {self.status_text} "
+        elif self.current_task and self.current_task != "Ready":
+            status_disp = f" {self.current_task} "
+
+        # Compute remaining terminal width
+        current_len = len(t.plain)
+        width = self.size.width or 100
+        avail = max(3, width - current_len - len(status_disp) - 4)
+        line_filler = "─" * avail
+
+        t.append(f" {line_filler}", style="#22c55e")
+        if status_disp:
+            t.append(status_disp, style="bold #4ade80")
+        t.append("─╮", style="bold #22c55e")
+
+        return t
 
     def set_state(self, new_state: str, tool_name: str = "") -> None:
-        from oktigent.tui.animations import get_random_mascot
         self.state = new_state
-        self.mascot_text = get_random_mascot(new_state, tool_name)
         if new_state == "thinking":
             self.status_text = "Thinking..."
             self.speedometer.start()
@@ -248,81 +345,30 @@ class ToolDock(Static):
             self.status_text = "Blocked / Error"
         elif new_state == "idle":
             self.status_text = "Ready"
-
-    def watch_status_text(self, value: str) -> None:
-        try:
-            self.query_one("#status", Static).update(value)
-        except Exception:
-            pass
-
-    def watch_mascot_text(self, val: str) -> None:
-        try:
-            self.query_one("#mascot-display", Static).update(Text(val, style="bold magenta"))
-        except Exception:
-            pass
-
-    def watch_speed_text(self, val: str) -> None:
-        try:
-            self.query_one("#speedometer-display", Static).update(Text(val, style="cyan"))
-        except Exception:
-            pass
-
-    def watch_cache_text(self, val: str) -> None:
-        try:
-            self.query_one("#cache-display", Static).update(Text(val, style="magenta"))
-        except Exception:
-            pass
-
-    def watch_cost_text(self, val: str) -> None:
-        try:
-            self.query_one("#cost-display", Static).update(Text(val, style="bold yellow"))
-        except Exception:
-            pass
-
-    def watch_token_text(self, val: str) -> None:
-        try:
-            self.query_one("#token-display", Static).update(Text(val, style="dim white"))
-        except Exception:
-            pass
+        self.refresh()
 
     def update_status(self, text: str) -> None:
         self.status_text = text
+        self.refresh()
 
     def update_model(self, text: str) -> None:
         self.model_text = text
-        try:
-            self.query_one("#model-pill", Static).update(text)
-        except Exception:
-            pass
+        self.refresh()
 
     def update_tokens(self, usage: Any) -> None:
         if hasattr(usage, "completion_tokens"):
             self.speedometer.add_tokens(usage.completion_tokens)
 
-        # Total tokens
-        tot = getattr(usage, "total_tokens", 0)
-        if tot >= 1000:
-            self.token_text = f"📊 {tot/1000:.1f}k tok"
-        else:
-            self.token_text = f"📊 {tot} tok"
+        self.tokens_used = getattr(usage, "total_tokens", 0)
+        self.cost_usd = getattr(usage, "cost_usd", 0.0)
 
-        # Cost
-        cost = getattr(usage, "cost_usd", 0.0)
-        if cost == 0.0:
-            self.cost_text = "💰 🆓 Free"
-        elif cost < 0.01:
-            self.cost_text = f"💰 ${cost:.4f}"
-        else:
-            self.cost_text = f"💰 ${cost:.3f}"
-
-        # Cache
         p_tok = getattr(usage, "prompt_tokens", 0)
         c_read = getattr(usage, "cache_read_tokens", 0)
         if p_tok > 0 and c_read > 0:
-            pct = int((c_read / p_tok) * 100)
-            self.cache_text = f"💾 {pct}% cache"
+            self.cache_pct = int((c_read / p_tok) * 100)
         else:
-            self.cache_text = "💾 0% cache"
+            self.cache_pct = 0
+        self.refresh()
 
 
 class PermissionDialog(Vertical):
@@ -963,61 +1009,9 @@ class OktigentApp(App):
     #tool-dock {
         dock: top;
         height: 1;
-        background: #101322;
+        background: #0b0d17;
         padding: 0 1;
-        overflow-x: hidden;
-    }
-    #ribbon-container {
-        width: 100%;
-        height: 1;
-        layout: horizontal;
-    }
-    #ribbon-left {
-        width: auto;
-        margin-right: 2;
-    }
-    #brand-pill {
-        color: #38bdf8;
-        text-style: bold;
-        margin-right: 2;
-    }
-    #model-pill {
-        color: #c084fc;
-        text-style: bold;
-    }
-    #ribbon-center {
-        width: auto;
-        margin-right: 2;
-    }
-    #dock-spinner {
-        margin-right: 1;
-    }
-    #status {
-        color: #34d399;
-    }
-    #mascot-display {
-        margin-left: 1;
-        color: #f43f5e;
-    }
-    #ribbon-right {
-        width: 1fr;
-        align-horizontal: right;
-    }
-    .metric-pill {
-        margin-left: 2;
-    }
-    #speedometer-display {
-        color: #38bdf8;
-    }
-    #cache-display {
-        color: #a78bfa;
-    }
-    #cost-display {
-        color: #fbbf24;
-        text-style: bold;
-    }
-    #token-display {
-        color: #94a3b8;
+        overflow: hidden;
     }
     #chat {
         height: 1fr;
