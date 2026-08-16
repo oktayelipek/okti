@@ -77,8 +77,10 @@ GRADIENT_PALETTES = [
 class AnimatedAsciiBanner(Static):
     """Animated rainbow/neon wave ASCII logo banner with live shimmering effect."""
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, provider_name: str = "", model_name: str = "", **kwargs) -> None:
         super().__init__(**kwargs)
+        self.provider_name = provider_name
+        self.model_name = model_name
         self._frame = 0
         self._quote = get_random_quote()
 
@@ -90,7 +92,6 @@ class AnimatedAsciiBanner(Static):
         self.refresh()
 
     def render(self) -> Text:
-        from rich.text import Text
         palette = GRADIENT_PALETTES[self._frame % len(GRADIENT_PALETTES)]
         lines = ASCII_LOGO.strip().splitlines()
 
@@ -103,10 +104,15 @@ class AnimatedAsciiBanner(Static):
         out.append("\n  ✦ ", style="bold yellow")
         out.append("The Autonomous AI Coding Terminal for Builders", style="bold white")
         out.append(" ✦\n\n", style="bold yellow")
+        if self.model_name:
+            out.append("  🤖 Active Model: ", style="dim")
+            if self.provider_name:
+                out.append(f"{self.provider_name} / ", style="bold cyan")
+            out.append(f"{self.model_name}\n", style="bold green")
         out.append(f"  💡 {self._quote}\n\n", style="dim italic")
         out.append("  Type your prompt or press ", style="dim")
         out.append("/", style="bold cyan")
-        out.append(" to explore slash commands.\n", style="dim")
+        out.append(" to explore slash commands (e.g. /models, /theme, /review).\n", style="dim")
         return out
 
 class ThinkingIndicator(Static):

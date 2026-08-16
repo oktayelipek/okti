@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any
 
 from rich.text import Text
 from textual import on, work
@@ -65,9 +66,18 @@ SLASH_COMMANDS = [
 class ChatPane(VerticalScroll):
     """Main chat area with streaming support and expressive startup banner."""
 
+    def __init__(self, provider_name: str = "", model_name: str = "", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.provider_name = provider_name
+        self.model_name = model_name
+
     def compose(self) -> ComposeResult:
         from oktigent.tui.animations import AnimatedAsciiBanner
-        yield AnimatedAsciiBanner(id="welcome-banner")
+        yield AnimatedAsciiBanner(
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            id="welcome-banner",
+        )
 
     def add_user_message(self, text: str) -> None:
         msg = Text()
@@ -894,9 +904,7 @@ class OktigentApp(App):
         dock: top;
         height: 1;
         background: #141726;
-        border-bottom: solid #1e2538;
         padding: 0 1;
-        align-vertical: middle;
     }
     #ribbon-container {
         width: 100%;
@@ -998,7 +1006,9 @@ class OktigentApp(App):
         yield self.tool_dock
 
         # Main expansive chat area
-        self.chat_pane = ChatPane(id="chat")
+        p_name = self.config.default_provider.value if hasattr(self.config.default_provider, "value") else str(self.config.default_provider)
+        m_name = self.config.default_model
+        self.chat_pane = ChatPane(provider_name=p_name, model_name=m_name, id="chat")
         yield self.chat_pane
 
         # Autocomplete suggestions
