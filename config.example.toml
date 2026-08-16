@@ -21,6 +21,10 @@ max_tokens = 128000
 compaction_threshold = 0.75
 background_max_chars = 50000
 
+# Sessions
+auto_save = true  # auto-save after each assistant turn (default: true)
+# Use --no-auto-save CLI flag or auto_save = false to disable
+
 # Provider configurations
 [providers.ollama]
 base_url = "http://localhost:11434"

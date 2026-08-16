@@ -171,3 +171,42 @@ class Storage:
                 model=row[4],
             ))
         return messages
+
+    async def get_latest_session(self, workspace: str | None = None) -> dict[str, Any] | None:
+        """Get the most recent session, optionally filtered by workspace."""
+        if workspace:
+            cursor = await self._db.execute(
+                "SELECT id, name, created_at, updated_at, workspace, model FROM sessions WHERE workspace = ? ORDER BY updated_at DESC LIMIT 1",
+                (workspace,),
+            )
+        else:
+            cursor = await self._db.execute(
+                "SELECT id, name, created_at, updated_at, workspace, model FROM sessions ORDER BY updated_at DESC LIMIT 1",
+            )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "name": row[1],
+            "created_at": row[2],
+            "updated_at": row[3],
+            "workspace": row[4],
+            "model": row[5],
+        }
+
+    async def get_message_count(self, session_id: str) -> int:
+        """Return the number of messages stored for a session."""
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Delete a session and its messages."""
+        await self._db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        cursor = await self._db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        await self._db.commit()
+        return cursor.rowcount > 0

@@ -106,6 +106,9 @@ class OktigentConfig(BaseModel):
     theme: str = "monokai"
     show_token_usage: bool = True
 
+    # Sessions
+    auto_save: bool = True  # auto-save after each assistant turn
+
 
 # ---------------------------------------------------------------------------
 # Config loading

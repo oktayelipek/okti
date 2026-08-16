@@ -50,6 +50,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Bypass all permission prompts — execute everything automatically.",
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume the most recent session automatically.",
+    )
+    parser.add_argument(
+        "--session",
+        type=str,
+        default=None,
+        help="Resume a specific session by ID.",
+    )
+    parser.add_argument(
+        "--no-auto-save",
+        action="store_true",
+        help="Disable auto-saving sessions after each turn.",
+    )
+    parser.add_argument(
         "--non-interactive",
         action="store_true",
         help="Run without the TUI (for scripting/piping).",
@@ -103,8 +119,17 @@ def _run_tui(args: argparse.Namespace) -> None:
         config.default_model = args.model
     if args.yolo:
         config.permissions.yolo = True
+    if args.no_auto_save:
+        config.auto_save = False
 
-    app = OktigentApp(config=config)
+    # Determine session to resume
+    resume_session_id = None
+    if args.session:
+        resume_session_id = args.session
+    elif args.resume:
+        resume_session_id = "__latest__"  # sentinel: TUI will resolve
+
+    app = OktigentApp(config=config, resume_session_id=resume_session_id)
     app.run()
 
 

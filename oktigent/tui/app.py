@@ -378,8 +378,13 @@ class SlashCommandHandler:
         msgs = len(self.app.agent.messages)
         model = self.app.config.default_model
         provider = self.app.config.default_provider.value
+        auto_save = "ON" if self.app.config.auto_save else "OFF"
         self.app.chat_pane.add_assistant_message(
-            f"**Session:** `{sid}`\n**Provider:** {provider}\n**Model:** `{model}`\n**Messages:** {msgs}"
+            f"**Session:** `{sid}`\n"
+            f"**Provider:** {provider}\n"
+            f"**Model:** `{model}`\n"
+            f"**Messages:** {msgs}\n"
+            f"**Auto-save:** {auto_save}"
         )
 
     async def _tokens(self, args: str) -> None:
@@ -397,7 +402,7 @@ class SlashCommandHandler:
         self.app.chat_pane.add_status("Context compacted.", style="green")
 
     async def _sessions(self, args: str) -> None:
-        """List recent sessions."""
+        """List recent sessions with message counts."""
         try:
             from oktigent.storage.db import Storage
             storage = Storage()
@@ -406,7 +411,11 @@ class SlashCommandHandler:
             await storage.close()
 
             if not sessions:
-                self.app.chat_pane.add_assistant_message("No saved sessions yet.")
+                self.app.chat_pane.add_assistant_message(
+                    "No saved sessions yet.\n\n"
+                    "Sessions are auto-saved after each turn (disable with `--no-auto-save`).\n"
+                    "Use `/save` to save manually."
+                )
                 return
 
             lines = ["## Recent Sessions\n"]
@@ -416,13 +425,13 @@ class SlashCommandHandler:
                 model = s.get("model", "?")
                 updated = s.get("updated_at", "?")[:16]
                 lines.append(f"- `{sid}` — {name} ({model}) — {updated}")
-            lines.append("\nUse `/load <id>` to restore a session.")
+            lines.append("\nUse `/load <id>` to restore, or start fresh with a new message.")
             self.app.chat_pane.add_assistant_message("\n".join(lines))
         except Exception as e:
             self.app.chat_pane.add_status(f"Error: {e}", style="bold red")
 
     async def _save(self, args: str) -> None:
-        """Save current session."""
+        """Save current session (incremental — only saves new messages)."""
         try:
             from oktigent.storage.db import Storage
             storage = Storage()
@@ -434,14 +443,26 @@ class SlashCommandHandler:
                     model=self.app.config.default_model,
                 )
 
-            # Save all messages
-            for msg in self.app.agent.messages:
+            # Incremental save — only new messages
+            stored_count = await storage.get_message_count(self.app.agent.session_id)
+            new_messages = self.app.agent.messages[stored_count:]
+
+            for msg in new_messages:
                 await storage.add_message(self.app.agent.session_id, msg)
 
             await storage.close()
-            self.app.chat_pane.add_status(
-                f"Session saved: {self.app.agent.session_id}", style="green"
-            )
+
+            total = len(self.app.agent.messages)
+            if new_messages:
+                self.app.chat_pane.add_status(
+                    f"Session saved: {self.app.agent.session_id} (+{len(new_messages)} new, {total} total)",
+                    style="green",
+                )
+            else:
+                self.app.chat_pane.add_status(
+                    f"Session {self.app.agent.session_id} — already up to date ({total} messages)",
+                    style="dim",
+                )
         except Exception as e:
             self.app.chat_pane.add_status(f"Save error: {e}", style="bold red")
 
@@ -721,7 +742,7 @@ class OktigentApp(App):
     TITLE = "oktigent"
     SUB_TITLE = "agentic coding tool"
 
-    def __init__(self, config: OktigentConfig | None = None):
+    def __init__(self, config: OktigentConfig | None = None, resume_session_id: str | None = None):
         super().__init__()
         self.config = config or OktigentConfig()
         self.agent = AgentLoop(self.config)
@@ -732,6 +753,7 @@ class OktigentApp(App):
         self._current_stream_widget: StreamingMarkdown | None = None
         self._permission_event: asyncio.Event | None = None
         self._permission_result: bool = False
+        self._resume_session_id = resume_session_id  # Session to resume on mount
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -764,13 +786,55 @@ class OktigentApp(App):
 
     async def on_mount(self) -> None:
         """Initialize agent on app mount."""
-        await self.agent.initialize()
+        # Resolve session resume if requested
+        session_to_load = None
+        if self._resume_session_id:
+            from oktigent.storage.db import Storage
+            storage = Storage()
+            await storage.connect()
+            if self._resume_session_id == "__latest__":
+                session = await storage.get_latest_session(str(Path.cwd()))
+                if session:
+                    session_to_load = session["id"]
+                    self.chat_pane.add_status(f"Resuming session: {session['id']} ({session.get('name', '')})", style="cyan")
+                else:
+                    self.chat_pane.add_status("No previous session found — starting fresh.", style="dim")
+            else:
+                session_to_load = self._resume_session_id
+            await storage.close()
+
+        await self.agent.initialize(session_id=session_to_load)
+
+        # If we loaded a session, show messages in chat
+        if session_to_load:
+            await self._show_loaded_messages()
+
         provider_name = self.config.default_provider.value
         model_name = self.config.default_model
         self.tool_dock.update_model(f"{provider_name}/{model_name}")
 
         # Register permission callback
         self.agent.on("permission_ask", self._handle_permission_request)
+
+    async def _show_loaded_messages(self) -> None:
+        """Display loaded session messages in the chat pane."""
+        for msg in self.agent.messages:
+            if msg.role.value == "system":
+                continue
+            if msg.role.value == "user":
+                self.chat_pane.add_user_message(msg.content)
+            elif msg.role.value == "assistant":
+                if msg.content:
+                    self.chat_pane.add_assistant_message(msg.content)
+                # Show tool calls as events
+                for tc in (msg.tool_calls or []):
+                    self.chat_pane.add_tool_event(
+                        StreamEvent(type="tool_start", tool=tc.name, arguments=tc.arguments)
+                    )
+            elif msg.role.value == "tool":
+                self.chat_pane.add_tool_event(
+                    StreamEvent(type="tool_end", tool="tool", content=msg.content[:200])
+                )
 
     def _handle_permission_request(self, tool: str, arguments: dict) -> bool:
         """Handle permission request from agent loop (sync callback -> async bridge)."""
@@ -874,6 +938,9 @@ class OktigentApp(App):
                     # Update token display
                     if event.usage:
                         self.tool_dock.update_tokens(event.usage)
+                    # Auto-save session after each turn
+                    if self.config.auto_save:
+                        await self._auto_save()
 
                 elif event.type == "compaction":
                     self.chat_pane.add_status(event.content, style="yellow")
@@ -894,3 +961,34 @@ class OktigentApp(App):
         state = "ON" if self.config.permissions.yolo else "OFF"
         style = "bold yellow" if self.config.permissions.yolo else "dim"
         self.chat_pane.add_status(f"Yolo mode: {state}", style=style)
+
+    async def _auto_save(self) -> None:
+        """Auto-save session after each assistant turn (silent, no UI feedback).
+
+        Only saves messages that haven't been saved yet (incremental).
+        """
+        try:
+            from oktigent.storage.db import Storage
+            storage = Storage()
+            await storage.connect()
+
+            if not self.agent.session_id:
+                self.agent.session_id = await storage.create_session(
+                    workspace=str(Path.cwd()),
+                    model=self.config.default_model,
+                )
+
+            # Only save new messages (skip already-stored ones)
+            stored_count = await storage.get_message_count(self.agent.session_id)
+            total = len(self.agent.messages)
+            new_messages = self.agent.messages[stored_count:]
+
+            for msg in new_messages:
+                await storage.add_message(self.agent.session_id, msg)
+
+            await storage.close()
+            if new_messages:
+                logger.debug("Auto-saved %d new messages for session %s", len(new_messages), self.agent.session_id)
+
+        except Exception as e:
+            logger.warning("Auto-save failed: %s", e)
