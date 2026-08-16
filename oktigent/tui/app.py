@@ -485,64 +485,33 @@ class SlashCommandHandler:
             logger.exception("Plan generation failed")
 
     async def _models(self, args: str) -> None:
-        """List models with async fetching, search filter, and popular priority."""
-        self.app.chat_pane.add_status("Fetching models from provider...", style="dim")
+        """Open interactive model picker popup with keyboard selection and free tier grouping."""
         try:
             from oktigent.models.factory import create_provider
             provider = create_provider(self.app.config)
             all_models = await asyncio.to_thread(provider.list_models)
             current = self.app.config.default_model
-            query = args.strip().lower()
-
-            if query:
-                filtered = [m for m in all_models if query in m.lower()]
-            else:
-                filtered = all_models
-
             provider_name = self.app.config.default_provider.value
-            lines = [
-                f"## 🤖 Models for `{provider_name}`",
-                f"**Active model:** `{current}`\n",
-            ]
 
-            if query:
-                lines.append(f"**Filter:** `{query}` — Found **{len(filtered)}** matching model(s):\n")
-                for m in filtered[:50]:
-                    marker = " 🟢 *(active)*" if m == current else ""
-                    lines.append(f"- `{m}`{marker}")
-                if len(filtered) > 50:
-                    lines.append(f"\n*...and {len(filtered) - 50} more matching models.*")
-            else:
-                if provider_name == "openrouter":
-                    # Featured popular spotlight models on OpenRouter
-                    popular = [
-                        "anthropic/claude-3.7-sonnet",
-                        "anthropic/claude-3.5-sonnet",
-                        "anthropic/claude-3.5-haiku",
-                        "openai/gpt-4o",
-                        "openai/o3-mini",
-                        "openai/gpt-4o-mini",
-                        "deepseek/deepseek-chat",
-                        "deepseek/deepseek-r1",
-                        "google/gemini-2.0-flash-001",
-                        "meta-llama/llama-3.3-70b-instruct",
-                        "qwen/qwen-2.5-coder-32b-instruct",
-                    ]
-                    lines.append("### ⭐ Recommended Models on OpenRouter:\n")
-                    for m in popular:
-                        marker = " 🟢 *(active)*" if m == current else ""
-                        lines.append(f"- `{m}`{marker}")
-                    lines.append(f"\n*Total {len(all_models)} models available.*")
-                    lines.append("💡 **Search any model:** `/models claude` · `/models gpt` · `/models deepseek` · `/models llama`")
-                else:
-                    for m in filtered[:40]:
-                        marker = " 🟢 *(active)*" if m == current else ""
-                        lines.append(f"- `{m}`{marker}")
-
-            lines.append("\n**Switch active model:** `/model <model_id>`")
-            self.app.chat_pane.add_assistant_message("\n".join(lines))
+            from oktigent.tui.model_picker import ModelPickerModal
+            self.app.push_screen(
+                ModelPickerModal(
+                    provider_name=provider_name,
+                    current_model=current,
+                    models=all_models,
+                ),
+                callback=self._on_model_picked,
+            )
         except Exception as e:
-            self.app.chat_pane.add_status(f"Error listing models: {e}", style="bold red")
+            self.app.chat_pane.add_status(f"Error opening model picker: {e}", style="bold red")
+
+    def _on_model_picked(self, selected_model: str | None) -> None:
+        """Handle model selection from modal dialog."""
+        if selected_model:
+            self.app.config.default_model = selected_model
+            provider_name = self.app.config.default_provider.value
+            self.app.tool_dock.update_model(f"{provider_name} / {selected_model}")
+            self.app.chat_pane.add_status(f"Active model switched to: `{selected_model}`", style="bold green")
 
     async def _model(self, args: str) -> None:
         """Switch active model directly."""
