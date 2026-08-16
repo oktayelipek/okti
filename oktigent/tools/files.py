@@ -63,7 +63,10 @@ def _read_file_sync(path: str, start_line: int = 1, end_line: int | None = None)
 
 
 async def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> str:
-    """Read file contents with optional line range."""
+    """Read file contents with optional line range, or resolve virtual URIs (diff://, git://, rule://, skill://, conflict://)."""
+    from oktigent.tools.vfs import is_virtual_uri, resolve_virtual_uri
+    if is_virtual_uri(path):
+        return await resolve_virtual_uri(path)
     return await asyncio.to_thread(_read_file_sync, path, start_line, end_line)
 
 

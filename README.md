@@ -67,6 +67,7 @@ oktigent --model openai/gpt-4o
 | Command | Description |
 |---------|-------------|
 | `/help` | Show help |
+| `/rules` | View active project rules (Cursor `.cursorrules`/`.mdc`, Cline, Copilot, `AGENTS.md`) |
 | `/theme <name>` | Change visual theme (`synthwave`, `matrix`, `cyberpunk`, `nord`) |
 | `/setup` | Open interactive onboarding & setup wizard |
 | `/plan <scope>` | Create a development plan |
@@ -78,6 +79,16 @@ oktigent --model openai/gpt-4o
 | `/session` | Show current session info |
 | `/sessions` | List recent sessions |
 | `/save` | Save current session |
+
+## Virtual Filesystem (VFS) URI Schemes
+
+Read live context transparently through `read_file` without learning separate tools:
+
+- `diff://` / `diff://staged`: View unstaged or staged git diffs
+- `git://status` / `git://log`: View git status or commit history
+- `rule://all` / `rule://cursor`: View active workspace instructions and rules
+- `skill://<name>`: Inspect agent skills
+- `conflict://list`: Inspect unresolved git merge conflicts
 | `/load <id>` | Load a session by ID |
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |

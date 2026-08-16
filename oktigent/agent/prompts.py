@@ -56,9 +56,24 @@ _PROVIDER_PROMPT_MAP = {
 
 
 def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None = None) -> str:
-    """Load the best matching system prompt for a provider with memory injected."""
+    """Load the best matching system prompt for a provider with memory and universal rules injected."""
+    from oktigent.agent.rules import load_universal_rules, render_rules_markdown
+
     memory = load_project_memory(workspace_dir)
     memory_section = build_memory_prompt(memory) if memory else ""
+
+    rules = load_universal_rules(workspace_dir)
+    rules_section = render_rules_markdown(rules) if rules else ""
+
+    vfs_section = (
+        "## Virtual Filesystem (VFS) URI Schemes\n"
+        "You can call `read_file` with dynamic URI schemes to inspect live context directly:\n"
+        "- `read_file('diff://')` or `read_file('diff://staged')`: Read git diff\n"
+        "- `read_file('git://status')` or `read_file('git://log')`: Read git status/history\n"
+        "- `read_file('rule://all')`: Read active project rules\n"
+        "- `read_file('skill://<name>')`: Read specialized skill documentation\n"
+        "- `read_file('conflict://list')`: Inspect active git merge conflicts\n"
+    )
 
     prompt_filename = _PROVIDER_PROMPT_MAP.get(provider_id.lower(), "local.md")
 
@@ -84,8 +99,18 @@ def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None =
     if not content:
         content = _DEFAULT_SYSTEM_PROMPT
 
+    # Inject memory and VFS/rules
+    extra_sections = []
+    if memory_section:
+        extra_sections.append(memory_section)
+    if rules_section:
+        extra_sections.append(rules_section)
+    extra_sections.append(vfs_section)
+
+    combined_extra = "\n\n".join(extra_sections)
+
     if "{memory_section}" in content:
-        return content.format(memory_section=memory_section)
-    elif memory_section:
-        return f"{content}\n\n{memory_section}"
+        return content.format(memory_section=combined_extra)
+    elif combined_extra:
+        return f"{content}\n\n{combined_extra}"
     return content

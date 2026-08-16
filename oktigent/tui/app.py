@@ -37,6 +37,7 @@ SLASH_COMMANDS = [
     ("/help", "Show help & command list"),
     ("/setup", "Open onboarding & setup wizard"),
     ("/theme", "Switch color theme (synthwave, matrix, cyberpunk, nord)"),
+    ("/rules", "Show active project rules (Cursor, Cline, Copilot, AGENTS.md)"),
     ("/plan", "Create a development plan for a goal"),
     ("/approve", "Approve and execute plan tasks"),
     ("/models", "List available models for current provider"),
@@ -303,6 +304,7 @@ class SlashCommandHandler:
         handlers = {
             "/help": self._help,
             "/theme": self._theme,
+            "/rules": self._rules,
             "/setup": self._setup,
             "/onboard": self._setup,
             "/plan": self._plan,
@@ -328,6 +330,12 @@ class SlashCommandHandler:
             await handler(args)
             return True
         return False
+
+    async def _rules(self, args: str) -> None:
+        """Display all universal project rules detected in workspace."""
+        from oktigent.agent.rules import load_universal_rules, render_rules_markdown
+        rules = load_universal_rules()
+        self.app.chat_pane.add_assistant_message(render_rules_markdown(rules))
 
     async def _help(self, args: str) -> None:
         help_text = """## Slash Commands
