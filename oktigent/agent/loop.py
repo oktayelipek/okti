@@ -45,6 +45,8 @@ _SYSTEM_PROMPT_TEMPLATE = """You are oktigent, an elite AI coding agent. You are
 - Search codebases with regex and glob patterns
 - Execute shell commands (tests, builds, git, etc.)
 - Fetch web content for documentation
+- Git operations (status, diff, commit, push, pull, branch)
+- MCP external tool integration
 
 ## Operating Principles
 1. **Plan before acting**: Understand the full scope before making changes
@@ -59,6 +61,12 @@ _SYSTEM_PROMPT_TEMPLATE = """You are oktigent, an elite AI coding agent. You are
 - Use search_files to find code patterns
 - Use edit_file for surgical edits (preferred over write_file)
 - Use multi_edit for multiple changes to the same file
+
+## Git Workflow
+- Use git_status_detailed to check repo state
+- Use git_diff before committing to review changes
+- Use git_add + git_commit for atomic commits
+- Write clear commit messages
 
 {memory_section}
 
@@ -88,6 +96,7 @@ class AgentLoop:
         # Session tracking
         self.session_id: str | None = None
         self._current_plan = None  # Set by plan.py when a plan is generated
+        self.mcp_client = None  # MCP client for external tools
 
     def _build_default_registry(self) -> ToolRegistry:
         """Build the default tool registry with all built-in tools."""
@@ -95,12 +104,17 @@ class AgentLoop:
         from oktigent.tools.bash import register_bash_tools
         from oktigent.tools.web import register_web_tools
         from oktigent.tools.git_tools import register_git_tools
+        from oktigent.tools.plugin import load_all_plugins
 
         registry = ToolRegistry()
         register_file_tools(registry)
         register_bash_tools(registry)
         register_web_tools(registry)
         register_git_tools(registry)
+
+        # Load user plugins
+        load_all_plugins(registry)
+
         return registry
 
     def _build_system_prompt(self) -> str:
@@ -127,6 +141,9 @@ class AgentLoop:
         """Initialize the agent loop (load session if provided)."""
         self.messages = [Message(role=Role.SYSTEM, content=self.system_prompt)]
 
+        # Initialize MCP client and connect to configured servers
+        await self._init_mcp()
+
         if session_id:
             from oktigent.storage.db import Storage
             storage = Storage()
@@ -137,6 +154,33 @@ class AgentLoop:
             self.session_id = session_id
             await storage.close()
             logger.info("Loaded session %s with %d messages", session_id, len(stored))
+
+    async def _init_mcp(self) -> None:
+        """Initialize MCP connections from config."""
+        try:
+            from oktigent.tools.mcp_client import MCPClient, load_mcp_config
+            self.mcp_client = MCPClient()
+            configs = load_mcp_config()
+            for config in configs:
+                try:
+                    tools = await self.mcp_client.connect(config)
+                    # Register MCP tools in the registry
+                    for tool in tools:
+                        from oktigent.tools.registry import ToolDef
+                        self.registry.register(ToolDef(
+                            name=f"mcp_{config.name}_{tool.name}",
+                            description=tool.description,
+                            parameters=tool.parameters,
+                            handler=lambda *a, _tn=tool.name, **kw: self.mcp_client.call_tool(_tn, kw),
+                            risk_level="medium",
+                        ))
+                    logger.info("Connected to MCP server %s: %d tools", config.name, len(tools))
+                except Exception as e:
+                    logger.warning("Failed to connect to MCP server %s: %s", config.name, e)
+        except ImportError:
+            logger.debug("MCP client not available")
+        except Exception as e:
+            logger.debug("MCP initialization skipped: %s", e)
 
     async def run_single(self, user_input: str) -> str:
         """Run a single user turn (non-interactive mode). Returns final response."""

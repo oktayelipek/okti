@@ -218,6 +218,8 @@ class SlashCommandHandler:
             "/compact": self._compact,
             "/refresh": self._refresh,
             "/git": self._git,
+            "/mcp": self._mcp,
+            "/plugin": self._plugin,
         }
 
         handler = handlers.get(cmd)
@@ -244,7 +246,9 @@ class SlashCommandHandler:
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |
 | `/refresh` | Refresh file tree |
-| `/git` | Git operations (status, diff, log, commit) |"""
+| `/git` | Git operations (status, diff, log, commit) |
+| `/mcp` | MCP server management |
+| `/plugin` | Plugin management |"""
         self.app.chat_pane.add_assistant_message(help_text)
 
     async def _plan(self, args: str) -> None:
@@ -540,6 +544,83 @@ class SlashCommandHandler:
             self.app.chat_pane.add_assistant_message(f"```\n{result}\n```")
         except Exception as e:
             self.app.chat_pane.add_status(f"Git error: {e}", style="bold red")
+
+    async def _mcp(self, args: str) -> None:
+        """MCP server management."""
+        parts = args.strip().split(maxsplit=1)
+        subcmd = parts[0] if parts else "list"
+        subargs = parts[1] if len(parts) > 1 else ""
+
+        if subcmd == "list":
+            mcp_client = self.app.agent.mcp_client
+            if not mcp_client:
+                self.app.chat_pane.add_assistant_message("MCP client not initialized.")
+                return
+            tools = mcp_client.list_tools()
+            if not tools:
+                self.app.chat_pane.add_assistant_message("No MCP tools connected.\n\nConfigure servers in `~/.config/oktigent/mcp.toml`")
+                return
+            lines = ["## MCP Tools\n"]
+            for tool in tools:
+                lines.append(f"- `{tool.name}` ({tool.server_name}): {tool.description[:80]}")
+            self.app.chat_pane.add_assistant_message("\n".join(lines))
+
+        elif subcmd == "help":
+            self.app.chat_pane.add_assistant_message("""## MCP Commands
+
+| Command | Description |
+|---------|-------------|
+| `/mcp list` | List connected MCP tools |
+| `/mcp help` | Show this help |
+
+Configure MCP servers in `~/.config/oktigent/mcp.toml`:
+```toml
+[servers.myserver]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+transport = "stdio"
+```""")
+        else:
+            self.app.chat_pane.add_status(f"Unknown MCP subcommand: {subcmd}. Try /mcp help", style="bold red")
+
+    async def _plugin(self, args: str) -> None:
+        """Plugin management."""
+        from oktigent.tools.plugin import create_plugin_template, discover_plugins
+
+        parts = args.strip().split(maxsplit=1)
+        subcmd = parts[0] if parts else "list"
+
+        if subcmd == "list":
+            plugins = discover_plugins()
+            if not plugins:
+                self.app.chat_pane.add_assistant_message(
+                    "No plugins found.\n\n"
+                    "Create a plugin in `~/.config/oktigent/plugins/` or `.oktigent/plugins/`\n"
+                    "Use `/plugin create` to generate a template."
+                )
+                return
+            lines = ["## Plugins\n"]
+            for p in plugins:
+                lines.append(f"- `{p.name}`")
+            self.app.chat_pane.add_assistant_message("\n".join(lines))
+
+        elif subcmd == "create":
+            template_path = create_plugin_template()
+            self.app.chat_pane.add_assistant_message(
+                f"Plugin template created at:\n`{template_path}`\n\nEdit it to add your custom tools, then restart oktigent."
+            )
+        elif subcmd == "help":
+            self.app.chat_pane.add_assistant_message("""## Plugin Commands
+
+| Command | Description |
+|---------|-------------|
+| `/plugin list` | List installed plugins |
+| `/plugin create` | Create a plugin template |
+| `/plugin help` | Show this help |
+
+Plugins are Python files in `~/.config/oktigent/plugins/` or `.oktigent/plugins/`.""")
+        else:
+            self.app.chat_pane.add_status(f"Unknown plugin subcommand: {subcmd}. Try /plugin help", style="bold red")
 
 
 def _summarize_args(args: dict) -> str:

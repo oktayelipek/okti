@@ -1,0 +1,20 @@
+# MCP (Model Context Protocol) server configuration
+# Place at ~/.config/oktigent/mcp.toml
+
+# Example: filesystem server
+# [servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/your/project"]
+# transport = "stdio"
+
+# Example: GitHub server
+# [servers.github]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-github"]
+# env = { GITHUB_TOKEN = "ghp_..." }
+# transport = "stdio"
+
+# Example: SSE server (remote)
+# [servers.remote]
+# url = "http://localhost:8080/mcp"
+# transport = "sse"
