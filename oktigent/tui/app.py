@@ -40,7 +40,8 @@ SLASH_COMMANDS = [
     ("/review", "Run AI code review with P0-P3 ranking and SHIP/DO NOT SHIP verdict"),
     ("/plan", "Create a development plan for a goal"),
     ("/approve", "Approve and execute plan tasks"),
-    ("/models", "List available models for current provider"),
+    ("/models", "List available models for current provider (supports search filter)"),
+    ("/model", "Switch active model (e.g. /model anthropic/claude-3.7-sonnet)"),
     ("/provider", "Switch active model provider"),
     ("/yolo", "Toggle auto-execution without permission prompts"),
     ("/git", "Git operations (status, diff, log, commit, push, branch)"),
@@ -303,6 +304,7 @@ class SlashCommandHandler:
             "/plan": self._plan,
             "/approve": self._approve,
             "/models": self._models,
+            "/model": self._model,
             "/provider": self._provider,
             "/yolo": self._yolo,
             "/clear": self._clear,
@@ -483,23 +485,57 @@ class SlashCommandHandler:
             logger.exception("Plan generation failed")
 
     async def _models(self, args: str) -> None:
+        """List models with async fetching, search filter, and popular priority."""
+        self.app.chat_pane.add_status("Fetching models from provider...", style="dim")
         try:
             from oktigent.models.factory import create_provider
             provider = create_provider(self.app.config)
-            models = provider.list_models()
+            all_models = await asyncio.to_thread(provider.list_models)
             current = self.app.config.default_model
+            query = args.strip().lower()
+
+            if query:
+                filtered = [m for m in all_models if query in m.lower()]
+            else:
+                filtered = all_models
+
             lines = [
-                f"**Provider:** `{self.app.config.default_provider.value}`",
-                f"**Current model:** `{current}`",
-                "",
-                "**Available models:**",
+                f"## 🤖 Models for `{self.app.config.default_provider.value}`",
+                f"**Active model:** `{current}`\n",
             ]
-            for m in models:
-                marker = " (active)" if m == current else ""
+
+            if query:
+                lines.append(f"Matching query: `{query}` ({len(filtered)} found)\n")
+
+            # Limit display to max 40 models to keep TUI clean and readable
+            display_models = filtered[:40]
+            for m in display_models:
+                marker = " 🟢 (active)" if m == current else ""
                 lines.append(f"- `{m}`{marker}")
+
+            if len(filtered) > 40:
+                lines.append(f"\n*...and {len(filtered) - 40} more models.*")
+                lines.append("💡 Tip: Filter with `/models <search_term>` (e.g. `/models claude`, `/models gpt`, `/models deepseek`)")
+
+            lines.append("\n**Switch model with:** `/model <model_id>`")
             self.app.chat_pane.add_assistant_message("\n".join(lines))
         except Exception as e:
-            self.app.chat_pane.add_status(f"Error: {e}", style="bold red")
+            self.app.chat_pane.add_status(f"Error listing models: {e}", style="bold red")
+
+    async def _model(self, args: str) -> None:
+        """Switch active model directly."""
+        new_model = args.strip()
+        if not new_model:
+            self.app.chat_pane.add_status(
+                f"Active model: `{self.app.config.default_model}`\nUsage: `/model <model_name>`",
+                style="cyan",
+            )
+            return
+
+        self.app.config.default_model = new_model
+        provider_name = self.app.config.default_provider.value
+        self.app.tool_dock.update_model(f"{provider_name} / {new_model}")
+        self.app.chat_pane.add_status(f"Active model switched to: `{new_model}`", style="bold green")
 
     async def _provider(self, args: str) -> None:
         if not args:

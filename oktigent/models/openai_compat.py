@@ -165,19 +165,23 @@ class OpenAICompatProvider(BaseProvider):
         """Fetch models from the provider's /models endpoint."""
         try:
             import httpx as _httpx
-            with _httpx.Client(timeout=5) as client:
+            with _httpx.Client(timeout=15) as client:
                 resp = client.get(f"{self.base_url}/models", headers=self._headers())
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    logger.warning("Failed to fetch models from %s: %s", self.base_url, resp.text)
+                    return [self._default_model()]
                 data = resp.json()
-                return [m["id"] for m in data.get("data", [])]
-        except Exception:
+                models = [m["id"] for m in data.get("data", []) if "id" in m]
+                return sorted(models) if models else [self._default_model()]
+        except Exception as e:
+            logger.warning("Error fetching models: %s", e)
             return [self._default_model()]
 
     def _default_model(self) -> str:
         defaults = {
             "openai": "gpt-4o",
             "deepseek": "deepseek-chat",
-            "openrouter": "anthropic/claude-sonnet-4",
+            "openrouter": "anthropic/claude-3.7-sonnet",
             "xai": "grok-2",
         }
         return defaults.get(self.provider_name, "gpt-4o")
