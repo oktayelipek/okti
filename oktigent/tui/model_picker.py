@@ -1,4 +1,4 @@
-"""Model Picker Modal Screen — Interactive searchable popup for choosing models with free-tier grouping."""
+"""Model Picker Modal Screen — Interactive searchable popup with Tabs and keyboard navigation."""
 
 from __future__ import annotations
 
@@ -9,16 +9,15 @@ from typing import Any
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
+from textual.events import Key
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, OptionList, Static
+from textual.widgets import Input, Label, OptionList, Static, Tabs, Tab
 from textual.widgets.option_list import Option
 
 logger = logging.getLogger(__name__)
 
-# Fallback featured spotlight models
 FEATURED_MODELS = [
-    "anthropic/claude-3.7-sonnet",
     "anthropic/claude-3.5-sonnet",
     "anthropic/claude-3.5-haiku",
     "openai/gpt-4o",
@@ -50,8 +49,8 @@ class ModelPickerModal(ModalScreen[str | None]):
     }
     #picker-container {
         width: 85%;
-        max-width: 90;
-        height: 80%;
+        max-width: 95;
+        height: 85%;
         background: #141724;
         border: round #38bdf8;
         padding: 1 2;
@@ -61,25 +60,9 @@ class ModelPickerModal(ModalScreen[str | None]):
         color: #38bdf8;
         margin-bottom: 1;
     }
-    #filter-bar {
-        height: 3;
+    #filter-tabs {
         margin-bottom: 1;
-    }
-    .filter-btn {
-        margin-right: 1;
-        min-width: 10;
-        height: 1;
-        background: #1e2538;
-        color: #94a3b8;
-    }
-    .filter-btn:hover {
-        background: #38bdf8;
-        color: #0f111a;
-    }
-    .filter-btn-active {
-        background: #38bdf8;
-        color: #0f111a;
-        text-style: bold;
+        background: #0f111a;
     }
     #picker-search {
         border: round #6366f1;
@@ -101,7 +84,9 @@ class ModelPickerModal(ModalScreen[str | None]):
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("enter", "select_current", "Select"),
+        Binding("enter", "select_highlighted", "Select"),
+        Binding("down", "focus_next_option", "Next", show=False),
+        Binding("up", "focus_prev_option", "Prev", show=False),
     ]
 
     def __init__(
@@ -115,7 +100,7 @@ class ModelPickerModal(ModalScreen[str | None]):
         self.provider_name = provider_name
         self.current_model = current_model
         self.raw_models = models
-        self.active_filter = "all"  # "all", "free", "featured", "claude", "gpt", "deepseek"
+        self.active_tab = "tab-all"
         self._parsed_models: list[ModelItem] = []
 
         for m in self.raw_models:
@@ -133,16 +118,16 @@ class ModelPickerModal(ModalScreen[str | None]):
         with Vertical(id="picker-container"):
             yield Label(f"🤖 Select Model — Provider: [bold cyan]{self.provider_name}[/]", id="picker-title")
 
-            with Horizontal(id="filter-bar"):
-                yield Button("All", id="btn-all", classes="filter-btn filter-btn-active")
-                yield Button("🆓 Free Tier", id="btn-free", classes="filter-btn")
-                yield Button("⭐ Featured", id="btn-featured", classes="filter-btn")
-                yield Button("Claude", id="btn-claude", classes="filter-btn")
-                yield Button("GPT", id="btn-gpt", classes="filter-btn")
-                yield Button("DeepSeek", id="btn-deepseek", classes="filter-btn")
+            with Tabs(id="filter-tabs"):
+                yield Tab("All Models", id="tab-all")
+                yield Tab("🆓 Free Tier", id="tab-free")
+                yield Tab("⭐ Featured", id="tab-featured")
+                yield Tab("Claude", id="tab-claude")
+                yield Tab("GPT", id="tab-gpt")
+                yield Tab("DeepSeek", id="tab-deepseek")
 
             self.search_input = Input(
-                placeholder="🔍 Type to search models (e.g. sonnet, r1, flash, free)...",
+                placeholder="🔍 Search model by name (e.g. sonnet, r1, flash, free)...",
                 id="picker-search",
             )
             yield self.search_input
@@ -162,29 +147,27 @@ class ModelPickerModal(ModalScreen[str | None]):
 
         filtered: list[ModelItem] = []
         for m in self._parsed_models:
-            # Check filter category
-            if self.active_filter == "free" and not m.is_free:
+            # Check tab
+            if self.active_tab == "tab-free" and not m.is_free:
                 continue
-            if self.active_filter == "featured" and m.id not in FEATURED_MODELS and not m.is_free:
+            if self.active_tab == "tab-featured" and m.id not in FEATURED_MODELS and not m.is_free:
                 continue
-            if self.active_filter == "claude" and m.category != "claude":
+            if self.active_tab == "tab-claude" and m.category != "claude":
                 continue
-            if self.active_filter == "gpt" and m.category != "gpt":
+            if self.active_tab == "tab-gpt" and m.category != "gpt":
                 continue
-            if self.active_filter == "deepseek" and m.category != "deepseek":
+            if self.active_tab == "tab-deepseek" and m.category != "deepseek":
                 continue
 
-            # Check query search
+            # Check search
             if query and query not in m.id.lower():
                 continue
 
             filtered.append(m)
 
-        # Sort: Free models first if in Free tab, or Featured first
         free_models = [m for m in filtered if m.is_free]
         paid_models = [m for m in filtered if not m.is_free]
 
-        # Add Free models group header if any
         if free_models:
             self.option_list.add_option(Option(f"[bold green]─── 🆓 FREE TIER MODELS ({len(free_models)}) ───[/]", disabled=True))
             for m in free_models:
@@ -204,40 +187,49 @@ class ModelPickerModal(ModalScreen[str | None]):
 
         if not filtered:
             self.option_list.add_option(Option("[dim italic]No matching models found.[/]", disabled=True))
+        else:
+            # Highlight first selectable option
+            for i in range(self.option_list.option_count):
+                opt = self.option_list.get_option_at_index(i)
+                if not opt.disabled:
+                    self.option_list.highlighted = i
+                    break
 
     @on(Input.Changed, "#picker-search")
     def on_search_changed(self, event: Input.Changed) -> None:
         self._populate_options(search_query=event.value)
 
-    @on(Button.Pressed)
-    def on_filter_btn_pressed(self, event: Button.Pressed) -> None:
-        btn_id = event.button.id
-        if not btn_id:
-            return
-
-        for b in self.query(".filter-btn"):
-            b.remove_class("filter-btn-active")
-        event.button.add_class("filter-btn-active")
-
-        if btn_id == "btn-all":
-            self.active_filter = "all"
-        elif btn_id == "btn-free":
-            self.active_filter = "free"
-        elif btn_id == "btn-featured":
-            self.active_filter = "featured"
-        elif btn_id == "btn-claude":
-            self.active_filter = "claude"
-        elif btn_id == "btn-gpt":
-            self.active_filter = "gpt"
-        elif btn_id == "btn-deepseek":
-            self.active_filter = "deepseek"
-
-        self._populate_options(search_query=self.search_input.value)
+    @on(Tabs.TabActivated, "#filter-tabs")
+    def on_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if event.tab and event.tab.id:
+            self.active_tab = event.tab.id
+            self._populate_options(search_query=self.search_input.value)
 
     @on(OptionList.OptionSelected, "#picker-options")
     def on_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_id:
             self.dismiss(event.option_id)
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "down":
+            if self.search_input.has_focus:
+                self.option_list.focus()
+                self.option_list.action_cursor_down()
+                event.prevent_default()
+        elif event.key == "up":
+            if self.option_list.has_focus and self.option_list.highlighted == 1:
+                self.search_input.focus()
+                event.prevent_default()
+        elif event.key == "enter":
+            self.action_select_highlighted()
+            event.prevent_default()
+
+    def action_select_highlighted(self) -> None:
+        idx = self.option_list.highlighted
+        if idx is not None:
+            opt = self.option_list.get_option_at_index(idx)
+            if opt and not opt.disabled and opt.id:
+                self.dismiss(str(opt.id))
 
     def action_cancel(self) -> None:
         self.dismiss(None)

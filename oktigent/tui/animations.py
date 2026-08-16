@@ -109,6 +109,36 @@ class AnimatedAsciiBanner(Static):
         out.append(" to explore slash commands.\n", style="dim")
         return out
 
+class ThinkingIndicator(Static):
+    """Live pulsing spinner showing current model and elapsed thinking time."""
+
+    def __init__(self, model_name: str = "", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.model_name = model_name
+        self._frame = 0
+        self._start_time = time.time()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.08, self._tick)
+
+    def _tick(self) -> None:
+        self._frame += 1
+        self.refresh()
+
+    def render(self) -> Text:
+        spinner = BRAILLE_SPINNER[self._frame % len(BRAILLE_SPINNER)]
+        elapsed = time.time() - self._start_time
+
+        out = Text()
+        out.append("\n ⚡ ", style="bold yellow")
+        out.append("Thinking", style="bold cyan")
+        if self.model_name:
+            out.append(f" with {self.model_name}", style="bold white")
+        out.append(f"... {spinner} ", style="bold magenta")
+        out.append(f"({elapsed:.1f}s)\n", style="dim")
+        return out
+
+
 THEMES = {
     "default": """
     Screen { background: #0f111a; color: #abb2bf; }

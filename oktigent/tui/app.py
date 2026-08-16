@@ -76,6 +76,22 @@ class ChatPane(VerticalScroll):
         self.mount(Static(msg))
         self.scroll_end(animate=False)
 
+    def show_thinking(self, model_name: str) -> None:
+        """Mount a live animated thinking indicator."""
+        from oktigent.tui.animations import ThinkingIndicator
+        self.hide_thinking()
+        indicator = ThinkingIndicator(model_name=model_name, id="live-thinking-indicator")
+        self.mount(indicator)
+        self.scroll_end(animate=False)
+
+    def hide_thinking(self) -> None:
+        """Remove any active thinking indicator."""
+        try:
+            for ind in self.query("#live-thinking-indicator"):
+                ind.remove()
+        except Exception:
+            pass
+
     def start_assistant_message(self) -> StreamingMarkdown:
         """Create a new streaming markdown widget for the assistant response."""
         widget = StreamingMarkdown(classes="assistant-message")
@@ -1162,38 +1178,34 @@ class OktigentApp(App):
     @work(exclusive=True)
     async def _run_agent(self, user_input: str) -> None:
         """Run the agent loop in a worker with live streaming and expressive feedback."""
-        try:
-            # Create streaming widget for this response
-            stream_widget = self.chat_pane.start_assistant_message()
-            accumulated_content = ""
-            self.tool_dock.set_state("thinking")
+        model_name = self.config.default_model
+        self.chat_pane.show_thinking(model_name)
+        stream_widget = None
+        accumulated_content = ""
+        self.tool_dock.set_state("thinking")
 
+        try:
             async for event in self.agent.run_streaming(user_input):
                 if event.type == "content":
-                    # Live streaming: append delta to widget
+                    if stream_widget is None:
+                        self.chat_pane.hide_thinking()
+                        stream_widget = self.chat_pane.start_assistant_message()
+
                     accumulated_content += event.content
                     stream_widget.append_delta(event.content)
 
                 elif event.type in ("tool_start", "tool_end", "tool_denied"):
+                    self.chat_pane.hide_thinking()
                     if event.type == "tool_start":
                         self.tool_dock.set_state("tool", tool_name=event.tool or "tool")
                     elif event.type == "tool_end":
                         self.tool_dock.set_state("thinking")
 
                     self.chat_pane.add_tool_event(event)
-                    # Refresh file tree after file modifications
-                    if event.type == "tool_end" and event.tool in (
-                        "write_file", "edit_file", "multi_edit", "run_command"
-                    ):
-                        try:
-                            self.file_tree.refresh_tree()
-                        except Exception:
-                            pass
 
                 elif event.type == "permission_ask":
-                    # Show permission request and wait for user input
+                    self.chat_pane.hide_thinking()
                     self.chat_pane.add_permission_request(event.tool, event.arguments)
-                    # Wait for user to type /approve or /deny
                     self._permission_event = asyncio.Event()
                     self._permission_result = False
                     self.tool_dock.set_state("error")
@@ -1202,35 +1214,36 @@ class OktigentApp(App):
 
                     if self._permission_result:
                         self.chat_pane.add_permission_result(event.tool, True)
-                        # Execute the tool
                         result = await self.agent.registry.call(event.tool, event.arguments)
                         self.chat_pane.add_tool_event(
                             StreamEvent(type="tool_end", tool=event.tool, content=result)
                         )
                         self.agent.messages.append(
-                            self.agent.messages.pop()  # Remove pending
+                            self.agent.messages.pop()
                         )
                     else:
                         self.chat_pane.add_permission_result(event.tool, False)
 
                 elif event.type == "turn_end":
-                    # Finalize streaming cursor
-                    stream_widget.finish()
-                    # Update token display
+                    self.chat_pane.hide_thinking()
+                    if stream_widget:
+                        stream_widget.finish()
                     if event.usage:
                         self.tool_dock.update_tokens(event.usage)
                     self.tool_dock.set_state("success")
-                    # Auto-save session after each turn
                     if self.config.auto_save:
                         await self._auto_save()
 
                 elif event.type == "compaction":
                     self.chat_pane.add_status(event.content, style="yellow")
 
-            stream_widget.finish()
+            self.chat_pane.hide_thinking()
+            if stream_widget:
+                stream_widget.finish()
             self.tool_dock.set_state("idle")
 
         except Exception as e:
+            self.chat_pane.hide_thinking()
             self.chat_pane.add_status(f"Error: {e}", style="bold red")
             self.tool_dock.set_state("error")
             logger.exception("Agent loop failed")

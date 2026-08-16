@@ -120,6 +120,13 @@ class OpenAICompatProvider(BaseProvider):
                         err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or raw.decode()
                     except Exception:
                         err_msg = raw.decode()
+
+                    if resp.status_code in (400, 422) and tools:
+                        logger.warning("Provider %s rejected tools schema. Retrying without tools...", self.provider_name)
+                        async for chunk in self.stream_chat(messages, tools=None, model=model, max_tokens=max_tokens, temperature=temperature):
+                            yield chunk
+                        return
+
                     raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data: "):
