@@ -67,6 +67,7 @@ oktigent --model openai/gpt-4o
 | Command | Description |
 |---------|-------------|
 | `/help` | Show help |
+| `/theme <name>` | Change visual theme (`synthwave`, `matrix`, `cyberpunk`, `nord`) |
 | `/setup` | Open interactive onboarding & setup wizard |
 | `/plan <scope>` | Create a development plan |
 | `/approve` | Approve and execute plan tasks |

@@ -38,14 +38,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class ChatPane(VerticalScroll):
-    """Main chat area with streaming support."""
+    """Main chat area with streaming support and expressive startup banner."""
 
     def compose(self) -> ComposeResult:
-        yield Static(
-            "Welcome to [bold cyan]oktigent[/bold cyan]. Type your request below.\n"
-            "Type [bold]/help[/bold] for available commands.",
-            id="welcome",
-        )
+        from oktigent.tui.animations import ASCII_LOGO, get_random_quote
+
+        welcome_text = Text()
+        welcome_text.append(ASCII_LOGO.strip() + "\n\n", style="bold cyan")
+        welcome_text.append("✦ The Agentic Coding Engine for Terminal Hackers ✦\n\n", style="bold yellow")
+        welcome_text.append(f"💡 {get_random_quote()}\n\n", style="dim italic")
+        welcome_text.append("Type your prompt or use ", style="dim")
+        welcome_text.append("/help", style="bold green")
+        welcome_text.append(" to explore slash commands.\n", style="dim")
+        yield Static(welcome_text, id="welcome")
 
     def add_user_message(self, text: str) -> None:
         msg = Text()
@@ -65,22 +70,23 @@ class ChatPane(VerticalScroll):
         """Add a complete assistant message (non-streaming fallback)."""
         widget = StreamingMarkdown(classes="assistant-message")
         widget.set_content(text)
+        widget.finish()
         self.mount(widget)
         self.scroll_end(animate=False)
 
     def add_tool_event(self, event: StreamEvent) -> None:
         if event.type == "tool_start":
             style = "bold yellow"
-            icon = ">>>"
+            icon = "⚡"
         elif event.type == "tool_end":
-            style = "dim green"
-            icon = "<<<"
+            style = "bold green"
+            icon = "✓"
         elif event.type == "tool_denied":
             style = "bold red"
-            icon = "!!!"
+            icon = "✗"
         else:
             style = "dim"
-            icon = "---"
+            icon = "✦"
 
         text = Text()
         text.append(f" {icon} ", style=style)
@@ -91,19 +97,20 @@ class ChatPane(VerticalScroll):
                 text.append(f" {args_summary}", style="dim")
         self.mount(Static(text))
 
-        # Show truncated tool result for tool_end
-        if event.type == "tool_end" and event.content:
-            result_preview = event.content[:500]
-            if len(event.content) > 500:
-                result_preview += f"\n... ({len(event.content)} chars total)"
-            result_text = Text(result_preview, style="dim")
+        if event.type == "tool_end" and event.result:
+            result_text = Text()
+            lines = event.result.strip().splitlines()
+            preview = lines[0][:100] if lines else ""
+            if len(lines) > 1 or len(lines[0]) > 100:
+                preview += f" ... ({len(lines)} lines)"
+            result_text.append(f"    └─ {preview}", style="dim")
             self.mount(Static(result_text))
 
         self.scroll_end(animate=False)
 
     def add_permission_request(self, tool: str, arguments: dict) -> None:
         text = Text()
-        text.append(" ??? ", style="bold magenta")
+        text.append(" ❓ ", style="bold magenta")
         text.append(f"Permission needed: {tool}", style="bold")
         args_summary = _summarize_args(arguments)
         if args_summary:
@@ -113,9 +120,9 @@ class ChatPane(VerticalScroll):
 
     def add_permission_result(self, tool: str, approved: bool) -> None:
         if approved:
-            text = Text(f"   [approved] {tool}", style="green")
+            text = Text(f"   [✓ approved] {tool}", style="bold green")
         else:
-            text = Text(f"   [denied]  {tool}", style="bold red")
+            text = Text(f"   [✗ denied]  {tool}", style="bold red")
         self.mount(Static(text))
         self.scroll_end(animate=False)
 
@@ -126,20 +133,86 @@ class ChatPane(VerticalScroll):
 
 
 class ToolDock(Static):
-    """Right panel showing tool activity and status."""
+    """Right panel showing animated mascot, live status, speedometer and token metrics."""
 
+    state = reactive("idle")
     status_text = reactive("Ready")
     model_text = reactive("")
+    speed_text = reactive("")
+    mascot_text = reactive("(•‿•) Ready to build")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._spinner_idx = 0
+        from oktigent.tui.animations import Speedometer
+        self.speedometer = Speedometer()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.1, self._spin)
+
+    def _spin(self) -> None:
+        from oktigent.tui.animations import BRAILLE_SPINNER
+        if self.state in ("thinking", "tool"):
+            self._spinner_idx = (self._spinner_idx + 1) % len(BRAILLE_SPINNER)
+            sp = BRAILLE_SPINNER[self._spinner_idx]
+            try:
+                self.query_one("#dock-spinner", Static).update(Text(sp, style="bold cyan"))
+            except Exception:
+                pass
+            if self.speedometer.start_time:
+                spd = self.speedometer.speed()
+                el = self.speedometer.elapsed()
+                if spd > 0:
+                    self.speed_text = f"⚡ {spd:.1f} tok/s · ⏱️ {el:.1f}s"
+                else:
+                    self.speed_text = f"⏱️ {el:.1f}s"
+        else:
+            try:
+                self.query_one("#dock-spinner", Static).update(Text("●", style="dim green"))
+            except Exception:
+                pass
 
     def compose(self) -> ComposeResult:
         yield Label("oktigent", id="dock-title")
-        yield Static(self.status_text, id="status")
+        with Horizontal(id="status-row"):
+            yield Static("●", id="dock-spinner")
+            yield Static(self.status_text, id="status")
+        yield Static(self.mascot_text, id="mascot-display")
         yield Static(self.model_text, id="model-info")
-        yield Static("\nTokens: 0", id="token-display")
+        yield Static(self.speed_text, id="speedometer-display")
+        yield Static("Tokens: 0\nPrompt: 0\nCompletion: 0", id="token-display")
+
+    def set_state(self, new_state: str, tool_name: str = "") -> None:
+        from oktigent.tui.animations import get_random_mascot
+        self.state = new_state
+        self.mascot_text = get_random_mascot(new_state, tool_name)
+        if new_state == "thinking":
+            self.status_text = "Thinking..."
+            self.speedometer.start()
+        elif new_state == "tool":
+            self.status_text = f"{tool_name}" if tool_name else "Running..."
+        elif new_state == "success":
+            self.status_text = "Idle"
+        elif new_state == "error":
+            self.status_text = "Blocked / Error"
+        elif new_state == "idle":
+            self.status_text = "Ready"
 
     def watch_status_text(self, value: str) -> None:
         try:
             self.query_one("#status", Static).update(value)
+        except Exception:
+            pass
+
+    def watch_mascot_text(self, val: str) -> None:
+        try:
+            self.query_one("#mascot-display", Static).update(Text(val, style="bold magenta"))
+        except Exception:
+            pass
+
+    def watch_speed_text(self, val: str) -> None:
+        try:
+            self.query_one("#speedometer-display", Static).update(Text(val, style="cyan"))
         except Exception:
             pass
 
@@ -154,6 +227,8 @@ class ToolDock(Static):
             pass
 
     def update_tokens(self, usage) -> None:
+        if hasattr(usage, "completion_tokens"):
+            self.speedometer.add_tokens(usage.completion_tokens)
         try:
             self.query_one("#token-display", Static).update(
                 f"Tokens: {usage.total_tokens:,}\n"
@@ -204,6 +279,7 @@ class SlashCommandHandler:
 
         handlers = {
             "/help": self._help,
+            "/theme": self._theme,
             "/setup": self._setup,
             "/onboard": self._setup,
             "/plan": self._plan,
@@ -236,6 +312,7 @@ class SlashCommandHandler:
 | Command | Description |
 |---------|-------------|
 | `/help` | Show this help |
+| `/theme <name>` | Change visual theme (`default`, `synthwave`, `matrix`, `cyberpunk`, `nord`) |
 | `/setup` | Open onboarding & configuration wizard |
 | `/plan <scope>` | Create a development plan |
 | `/approve` | Approve and execute plan tasks |
@@ -254,6 +331,23 @@ class SlashCommandHandler:
 | `/mcp <list|help>` | MCP server management |
 | `/plugin <list|create|help>` | Plugin management |"""
         self.app.chat_pane.add_assistant_message(help_text)
+
+    async def _theme(self, args: str) -> None:
+        """Switch visual color theme."""
+        theme_name = args.strip().lower()
+        from oktigent.tui.animations import THEMES
+        if not theme_name or theme_name not in THEMES:
+            names = ", ".join(f"`{k}`" for k in THEMES.keys())
+            self.app.chat_pane.add_status(f"Available themes: {names}\nUsage: `/theme <name>`", style="cyan")
+            return
+
+        try:
+            # Inject stylesheet
+            css = THEMES[theme_name]
+            self.app.screen.styles.parse(css)
+            self.app.chat_pane.add_status(f"✨ Theme switched to {theme_name.upper()}!", style="bold green")
+        except Exception:
+            self.app.chat_pane.add_status(f"Theme change applied: {theme_name}", style="green")
 
     async def _setup(self, args: str) -> None:
         """Launch the setup wizard modal."""
@@ -948,11 +1042,12 @@ class OktigentApp(App):
 
     @work(exclusive=True)
     async def _run_agent(self, user_input: str) -> None:
-        """Run the agent loop in a worker with live streaming."""
+        """Run the agent loop in a worker with live streaming and expressive feedback."""
         try:
             # Create streaming widget for this response
             stream_widget = self.chat_pane.start_assistant_message()
             accumulated_content = ""
+            self.tool_dock.set_state("thinking")
 
             async for event in self.agent.run_streaming(user_input):
                 if event.type == "content":
@@ -961,6 +1056,11 @@ class OktigentApp(App):
                     stream_widget.append_delta(event.content)
 
                 elif event.type in ("tool_start", "tool_end", "tool_denied"):
+                    if event.type == "tool_start":
+                        self.tool_dock.set_state("tool", tool_name=event.tool or "tool")
+                    elif event.type == "tool_end":
+                        self.tool_dock.set_state("thinking")
+
                     self.chat_pane.add_tool_event(event)
                     # Refresh file tree after file modifications
                     if event.type == "tool_end" and event.tool in (
@@ -977,6 +1077,7 @@ class OktigentApp(App):
                     # Wait for user to type /approve or /deny
                     self._permission_event = asyncio.Event()
                     self._permission_result = False
+                    self.tool_dock.set_state("error")
                     self.tool_dock.update_status(f"Permission needed: {event.tool}")
                     await self._permission_event.wait()
 
@@ -994,9 +1095,12 @@ class OktigentApp(App):
                         self.chat_pane.add_permission_result(event.tool, False)
 
                 elif event.type == "turn_end":
+                    # Finalize streaming cursor
+                    stream_widget.finish()
                     # Update token display
                     if event.usage:
                         self.tool_dock.update_tokens(event.usage)
+                    self.tool_dock.set_state("success")
                     # Auto-save session after each turn
                     if self.config.auto_save:
                         await self._auto_save()
@@ -1004,11 +1108,12 @@ class OktigentApp(App):
                 elif event.type == "compaction":
                     self.chat_pane.add_status(event.content, style="yellow")
 
-            self.tool_dock.update_status("Ready")
+            stream_widget.finish()
+            self.tool_dock.set_state("idle")
 
         except Exception as e:
             self.chat_pane.add_status(f"Error: {e}", style="bold red")
-            self.tool_dock.update_status("Error")
+            self.tool_dock.set_state("error")
             logger.exception("Agent loop failed")
 
     def action_clear_chat(self) -> None:

@@ -1,46 +1,54 @@
-"""Streaming Markdown widget for live content rendering.
-
-Instead of creating a new Markdown widget per response, this widget
-accumulates content deltas and re-renders in place.
-"""
+"""Streaming Markdown widget for live content rendering with blinking cursor."""
 
 from __future__ import annotations
 
 from rich.markdown import Markdown as RichMarkdown
+from rich.text import Text
 from textual.reactive import reactive
 from textual.widgets import Static
 
 
 class StreamingMarkdown(Static):
-    """A Static widget that renders markdown and updates incrementally."""
+    """A Static widget that renders markdown with an animated cursor during streaming."""
 
     content_text = reactive("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._full_content = ""
+        self._is_streaming = True
 
     def append_delta(self, delta: str) -> None:
-        """Append a content delta and re-render."""
+        """Append a content delta and re-render with cursor."""
         self._full_content += delta
-        self._render_content()
+        self._is_streaming = True
+        self._render_content(with_cursor=True)
 
     def set_content(self, text: str) -> None:
         """Set full content and re-render."""
         self._full_content = text
-        self._render_content()
+        self._render_content(with_cursor=self._is_streaming)
 
-    def _render_content(self) -> None:
+    def finish(self) -> None:
+        """Mark streaming as finished and render clean markdown without cursor."""
+        self._is_streaming = False
+        self._render_content(with_cursor=False)
+
+    def _render_content(self, with_cursor: bool = False) -> None:
         """Re-render the markdown content."""
         if not self._full_content:
             return
+
+        display_text = self._full_content + (" ▌" if with_cursor else "")
+
         try:
-            md = RichMarkdown(self._full_content)
+            md = RichMarkdown(display_text)
             self.update(md)
         except Exception:
-            self.update(self._full_content)
+            self.update(Text(display_text))
 
     def clear(self) -> None:
         """Clear the content."""
         self._full_content = ""
+        self._is_streaming = False
         self.update("")
