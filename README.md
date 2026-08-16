@@ -27,8 +27,11 @@ pip install oktigent
 ## Quick Start
 
 ```bash
-# Launch the TUI
+# Launch the TUI (interactive setup wizard opens on first run)
 oktigent
+
+# Run interactive setup wizard explicitly
+oktigent --setup
 
 # Run with a direct prompt (non-interactive)
 oktigent "create a Python REST API with FastAPI"
@@ -43,11 +46,11 @@ oktigent works with any LLM provider:
 
 | Provider | API Key Env Var | Example Model |
 |----------|----------------|---------------|
-| **Ollama** (local) | — | `codellama`, `llama3` |
+| **Ollama** (local) | — | `codellama`, `llama3.3`, `qwen2.5-coder` |
 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o`, `o3-mini` |
-| **Anthropic** | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| **Anthropic** | `ANTHROPIC_API_KEY` | `claude-3-7-sonnet-20250219` |
 | **Google Gemini** | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
-| **DeepSeek** | `DEEPSEEK_API_KEY` | `deepseek-chat` |
+| **DeepSeek** | `DEEPSEEK_API_KEY` | `deepseek-chat`, `deepseek-reasoner` |
 | **OpenRouter** | `OPENROUTER_API_KEY` | Any model |
 | **xAI** | `XAI_API_KEY` | `grok-2` |
 
@@ -64,6 +67,7 @@ oktigent --model openai/gpt-4o
 | Command | Description |
 |---------|-------------|
 | `/help` | Show help |
+| `/setup` | Open interactive onboarding & setup wizard |
 | `/plan <scope>` | Create a development plan |
 | `/approve` | Approve and execute plan tasks |
 | `/models` | List available models |

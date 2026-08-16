@@ -204,6 +204,8 @@ class SlashCommandHandler:
 
         handlers = {
             "/help": self._help,
+            "/setup": self._setup,
+            "/onboard": self._setup,
             "/plan": self._plan,
             "/approve": self._approve,
             "/models": self._models,
@@ -234,6 +236,7 @@ class SlashCommandHandler:
 | Command | Description |
 |---------|-------------|
 | `/help` | Show this help |
+| `/setup` | Open onboarding & configuration wizard |
 | `/plan <scope>` | Create a development plan |
 | `/approve` | Approve and execute plan tasks |
 | `/models` | List available models |
@@ -247,10 +250,15 @@ class SlashCommandHandler:
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |
 | `/refresh` | Refresh file tree |
-| `/git` | Git operations (status, diff, log, commit) |
-| `/mcp` | MCP server management |
-| `/plugin` | Plugin management |"""
+| `/git <subcmd>` | Git operations (status, diff, log, commit, push, branch) |
+| `/mcp <list|help>` | MCP server management |
+| `/plugin <list|create|help>` | Plugin management |"""
         self.app.chat_pane.add_assistant_message(help_text)
+
+    async def _setup(self, args: str) -> None:
+        """Launch the setup wizard modal."""
+        from oktigent.tui.onboarding import OnboardingScreen
+        self.app.push_screen(OnboardingScreen(self.app.config), callback=self.app._on_onboarding_completed)
 
     async def _approve(self, args: str) -> None:
         """Approve and execute tasks from current plan."""
@@ -764,7 +772,12 @@ class OktigentApp(App):
     TITLE = "oktigent"
     SUB_TITLE = "agentic coding tool"
 
-    def __init__(self, config: OktigentConfig | None = None, resume_session_id: str | None = None):
+    def __init__(
+        self,
+        config: OktigentConfig | None = None,
+        resume_session_id: str | None = None,
+        force_setup: bool = False,
+    ):
         super().__init__()
         self.config = config or OktigentConfig()
         self.agent = AgentLoop(self.config)
@@ -776,6 +789,7 @@ class OktigentApp(App):
         self._permission_event: asyncio.Event | None = None
         self._permission_result: bool = False
         self._resume_session_id = resume_session_id  # Session to resume on mount
+        self._force_setup = force_setup
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -808,6 +822,11 @@ class OktigentApp(App):
 
     async def on_mount(self) -> None:
         """Initialize agent on app mount."""
+        # Check if onboarding is needed
+        from oktigent.tui.onboarding import check_needs_onboarding, OnboardingScreen
+        if self._force_setup or check_needs_onboarding():
+            self.push_screen(OnboardingScreen(self.config), callback=self._on_onboarding_completed)
+
         # Resolve session resume if requested
         session_to_load = None
         if self._resume_session_id:
@@ -837,6 +856,25 @@ class OktigentApp(App):
 
         # Register permission callback
         self.agent.on("permission_ask", self._handle_permission_request)
+
+    def _on_onboarding_completed(self, updated_config: OktigentConfig | None) -> None:
+        """Handle completion of the onboarding screen."""
+        if not updated_config:
+            return
+        self.config = updated_config
+        self.agent.config = updated_config
+        from oktigent.models.factory import create_provider
+        try:
+            self.agent.provider = create_provider(updated_config)
+            p_name = updated_config.default_provider.value
+            m_name = updated_config.default_model
+            self.tool_dock.update_model(f"{p_name}/{m_name}")
+            self.chat_pane.add_status(
+                f"Configuration updated: {p_name} ({m_name}) — Safety: {'Yolo' if updated_config.permissions.yolo else 'Safe'}",
+                style="bold green",
+            )
+        except Exception as e:
+            self.chat_pane.add_status(f"Setup error: {e}", style="bold red")
 
     async def _show_loaded_messages(self) -> None:
         """Display loaded session messages in the chat pane."""

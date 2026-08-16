@@ -39,6 +39,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to config file (TOML). Default: ~/.config/oktigent/config.toml",
     )
     parser.add_argument(
+        "--setup", "--init",
+        action="store_true",
+        dest="setup",
+        help="Launch the interactive onboarding & configuration wizard.",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default=None,
@@ -129,7 +135,7 @@ def _run_tui(args: argparse.Namespace) -> None:
     elif args.resume:
         resume_session_id = "__latest__"  # sentinel: TUI will resolve
 
-    app = OktigentApp(config=config, resume_session_id=resume_session_id)
+    app = OktigentApp(config=config, resume_session_id=resume_session_id, force_setup=args.setup)
     app.run()
 
 
