@@ -112,7 +112,8 @@ def _run_non_interactive(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     loop = AgentLoop(config=config)
-    asyncio.run(loop.run_single(prompt_text))
+    result = asyncio.run(loop.run_single(prompt_text))
+    print(result)
 
 
 def _run_tui(args: argparse.Namespace) -> None:

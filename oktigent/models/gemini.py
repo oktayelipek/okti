@@ -117,9 +117,10 @@ class GeminiProvider(BaseProvider):
         if config:
             payload["generationConfig"] = config
 
-        url = f"{self.base_url}/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+        url = f"{self.base_url}/v1beta/models/{model_name}:generateContent"
+        headers = {"x-goog-api-key": self.api_key}
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, json=payload)
+            resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
 
@@ -180,9 +181,10 @@ class GeminiProvider(BaseProvider):
         if config:
             payload["generationConfig"] = config
 
-        url = f"{self.base_url}/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={self.api_key}"
+        url = f"{self.base_url}/v1beta/models/{model_name}:streamGenerateContent?alt=sse"
+        headers = {"x-goog-api-key": self.api_key}
         async with httpx.AsyncClient(timeout=300) as client:
-            async with client.stream("POST", url, json=payload) as resp:
+            async with client.stream("POST", url, json=payload, headers=headers) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data: "):

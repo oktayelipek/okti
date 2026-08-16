@@ -13,6 +13,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, AsyncIterator, Callable
 
@@ -67,6 +68,10 @@ class AgentLoop:
         self.session_id: str | None = None
         self._current_plan = None  # Set by plan.py when a plan is generated
         self.mcp_client = None  # MCP client for external tools
+
+        # Permission flow (TUI sets these before signaling the event)
+        self._permission_event: asyncio.Event | None = None
+        self._permission_result: bool = False
 
     def _build_default_registry(self) -> ToolRegistry:
         """Build the default tool registry with all built-in tools."""
@@ -206,7 +211,9 @@ class AgentLoop:
         for turn in range(self._max_turns):
             # Check context size
             if self.context.needs_compaction(self.messages):
-                self.messages = self.context.compact_messages(self.messages)
+                self.messages = self.context.compact_messages(
+                    self.messages, provider=self.provider, model=self.config.default_model
+                )
                 yield StreamEvent(type="compaction", content="Context compacted for efficiency.")
 
             # Stream the model response
@@ -229,12 +236,8 @@ class AgentLoop:
                             # Handle JSON string arguments (OpenAI-style streaming)
                             raw_args = tc.arguments.get("_raw", "")
                             if raw_args:
+                                # Always accumulate raw JSON — parse at the end
                                 existing._raw_args = getattr(existing, "_raw_args", "") + raw_args
-                                try:
-                                    import json as _json
-                                    existing.arguments = _json.loads(existing._raw_args)
-                                except (ValueError, TypeError):
-                                    pass
                             else:
                                 existing.arguments.update(tc.arguments)
                     else:
@@ -242,6 +245,25 @@ class AgentLoop:
                         tool_calls.append(tc)
                 if chunk.token_usage:
                     turn_usage = turn_usage + chunk.token_usage
+
+            # Finalize tool call arguments — parse accumulated raw JSON
+            import json as _json
+            for tc in tool_calls:
+                raw = getattr(tc, "_raw_args", "")
+                if raw and not tc.arguments:
+                    try:
+                        tc.arguments = _json.loads(raw)
+                    except (_json.JSONDecodeError, ValueError):
+                        # Try to fix trailing commas and incomplete JSON
+                        fixed = raw.rstrip().rstrip(",")
+                        try:
+                            tc.arguments = _json.loads(fixed)
+                        except (_json.JSONDecodeError, ValueError):
+                            logger.warning("Failed to parse tool call args: %s", raw[:100])
+                            tc.arguments = {"_raw": raw}
+                # Clean up internal attribute
+                if hasattr(tc, "_raw_args"):
+                    del tc._raw_args
 
             self.total_usage = self.total_usage + turn_usage
 
@@ -271,13 +293,18 @@ class AgentLoop:
                     result = f"Permission denied: {tc.name}"
                     yield StreamEvent(type="tool_denied", tool=tc.name, content=result)
                 elif level == PermissionLevel.ASK:
-                    # Emit permission request — TUI will handle the user prompt
-                    approved = self._emit(
-                        "permission_ask",
+                    # Yield permission_ask event, then wait for TUI response
+                    self._permission_event = asyncio.Event()
+                    self._permission_result = False
+                    yield StreamEvent(
+                        type="permission_ask",
                         tool=tc.name,
                         arguments=tc.arguments,
                     )
-                    if approved is False:
+                    # Wait for TUI to set _permission_result and signal the event
+                    await self._permission_event.wait()
+                    approved = self._permission_result
+                    if not approved:
                         result = f"Permission denied by user: {tc.name}"
                         yield StreamEvent(type="tool_denied", tool=tc.name, content=result)
                     else:
@@ -381,12 +408,17 @@ class StreamEvent:
         tool: str = "",
         arguments: dict | None = None,
         usage: TokenUsage | None = None,
+        result: str | None = None,
     ):
         self.type = type
-        self.content = content
+        self.content = result if result is not None else content
         self.tool = tool
         self.arguments = arguments or {}
         self.usage = usage
+
+    @property
+    def result(self) -> str:
+        return self.content
 
     def __repr__(self) -> str:
         return f"StreamEvent(type={self.type}, tool={self.tool}, content_len={len(self.content)})"

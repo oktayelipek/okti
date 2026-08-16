@@ -84,13 +84,11 @@ class ContextManager:
         lines.append("\nTo read a background reference, use read_file on the original path or ask for ref content.")
         return "\n".join(lines)
 
-    def compact_messages(self, messages: list[Message]) -> list[Message]:
+    def compact_messages(self, messages: list[Message], provider: Any = None, model: str | None = None) -> list[Message]:
         """Compact messages by summarizing older messages.
 
-        Keeps:
-        - System prompt (first message)
-        - Recent messages (last N)
-        - All tool call/result pairs (but summarized)
+        If provider is given, uses model-based compaction for better quality.
+        Falls back to simple truncation if provider is not available.
         """
         if not messages:
             return messages
@@ -106,9 +104,43 @@ class ContextManager:
         recent = other_msgs[-4:]
         older = other_msgs[:-4]
 
-        # Summarize older messages
+        # Try model-based compaction if provider available
+        if provider is not None:
+            try:
+                import asyncio
+                from oktigent.context.compaction import compact_with_model
+
+                # Run the async compaction in a sync context if needed
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're inside an async context, use a task
+                    summary_text = asyncio.ensure_future(
+                        compact_with_model(older, provider, model)
+                    )
+                else:
+                    summary_text = loop.run_until_complete(
+                        compact_with_model(older, provider, model)
+                    )
+            except Exception:
+                # Fallback to simple summary
+                summary_text = self._simple_summary(older)
+        else:
+            summary_text = self._simple_summary(older)
+
+        # Store detailed older messages as background
+        ref_id = self.store_background("compacted-conversation", summary_text)
+
+        summary_msg = Message(
+            role=Role.USER,
+            content=f"[Context compacted. Earlier conversation summarized. Reference: {ref_id}]\n\nSummary of earlier conversation:\n{summary_text}",
+        )
+
+        return system_msgs + [summary_msg] + recent
+
+    def _simple_summary(self, messages: list[Message]) -> str:
+        """Simple truncation-based summary (fallback)."""
         summary_parts = []
-        for msg in older:
+        for msg in messages:
             if msg.role == Role.USER:
                 summary_parts.append(f"User: {msg.content[:200]}")
             elif msg.role == Role.ASSISTANT and msg.content:
@@ -118,17 +150,7 @@ class ContextManager:
                 summary_parts.append(f"Assistant called: {tools}")
             elif msg.role == Role.TOOL:
                 summary_parts.append(f"Tool result: {msg.content[:100]}")
-
-        # Store detailed older messages as background
-        older_text = "\n".join(summary_parts)
-        ref_id = self.store_background("compacted-conversation", older_text)
-
-        summary_msg = Message(
-            role=Role.USER,
-            content=f"[Context compacted. Earlier conversation summarized. Reference: {ref_id}]\n\nSummary of earlier conversation:\n{older_text}",
-        )
-
-        return system_msgs + [summary_msg] + recent
+        return "\n".join(summary_parts)
 
     def truncate_content(self, content: str, max_chars: int | None = None) -> str:
         """Truncate content and store full version in background if needed."""

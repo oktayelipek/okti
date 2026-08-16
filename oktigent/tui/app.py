@@ -141,11 +141,12 @@ class ChatPane(VerticalScroll):
                 text.append(f" {args_summary}", style="dim")
         self.mount(Static(text))
 
-        if event.type == "tool_end" and event.result:
+        output = getattr(event, "result", getattr(event, "content", ""))
+        if event.type == "tool_end" and output:
             result_text = Text()
-            lines = event.result.strip().splitlines()
+            lines = output.strip().splitlines()
             preview = lines[0][:100] if lines else ""
-            if len(lines) > 1 or len(lines[0]) > 100:
+            if len(lines) > 1 or (lines and len(lines[0]) > 100):
                 preview += f" ... ({len(lines)} lines)"
             result_text.append(f"    └─ {preview}", style="dim")
             self.mount(Static(result_text))
@@ -651,6 +652,14 @@ class SlashCommandHandler:
         provider_name = self.app.config.default_provider.value
         if provider_name in self.app.config.providers:
             self.app.config.providers[provider_name].model = new_model
+
+        # Rebuild provider with new model
+        try:
+            from oktigent.models.factory import create_provider
+            self.app.agent.provider = create_provider(self.app.config)
+        except Exception as e:
+            logger.warning("Failed to rebuild provider: %s", e)
+
         self.app.tool_dock.update_model(f"{provider_name} / {new_model}")
         self.app.chat_pane.add_status(f"Active model switched to: `{new_model}`", style="bold green")
 
@@ -726,8 +735,12 @@ class SlashCommandHandler:
         )
 
     async def _compact(self, args: str) -> None:
-        self.app.chat_pane.add_status("Compacting context...")
-        self.app.agent.messages = self.app.agent.context.compact_messages(self.app.agent.messages)
+        self.app.chat_pane.add_status("Compacting context with model...")
+        self.app.agent.messages = self.app.agent.context.compact_messages(
+            self.app.agent.messages,
+            provider=self.app.agent.provider,
+            model=self.app.config.default_model,
+        )
         self.app.chat_pane.add_status("Context compacted.", style="green")
 
     async def _sessions(self, args: str) -> None:
@@ -1136,8 +1149,8 @@ class OktigentApp(App):
         model_name = self.config.default_model
         self.tool_dock.update_model(f"{provider_name}/{model_name}")
 
-        # Register permission callback
-        self.agent.on("permission_ask", self._handle_permission_request)
+        # Register permission callback (legacy — now handled via events)
+        # self.agent.on("permission_ask", self._handle_permission_request)
 
         # Set default focus to input bar
         self.input_bar.focus()
@@ -1183,19 +1196,6 @@ class OktigentApp(App):
                 self.chat_pane.add_tool_event(
                     StreamEvent(type="tool_end", tool="tool", content=msg.content[:200])
                 )
-
-    def _handle_permission_request(self, tool: str, arguments: dict) -> bool:
-        """Handle permission request from agent loop (sync callback -> async bridge)."""
-        # This is called from async context via _emit, so we can use asyncio
-        self._permission_event = asyncio.Event()
-        self._permission_result = False
-
-        # Emit event to TUI
-        self.call_from_thread(self._show_permission_dialog, tool, arguments)
-
-        # We need to handle this differently - use a future
-        # For now, auto-approve in the callback and let the TUI handle it
-        return True
 
     def _show_permission_dialog(self, tool: str, arguments: dict) -> None:
         """Show permission dialog in the TUI."""
@@ -1294,21 +1294,20 @@ class OktigentApp(App):
                 elif event.type == "permission_ask":
                     self.chat_pane.hide_thinking()
                     self.chat_pane.add_permission_request(event.tool, event.arguments)
-                    self._permission_event = asyncio.Event()
-                    self._permission_result = False
                     self.tool_dock.set_state("error")
                     self.tool_dock.update_status(f"Permission needed: {event.tool}")
+
+                    # Wait for user to type /approve or /deny
+                    self._permission_event = asyncio.Event()
+                    self._permission_result = False
                     await self._permission_event.wait()
+
+                    # Signal the agent loop with the user's decision
+                    self.agent._permission_result = self._permission_result
+                    self.agent._permission_event.set()
 
                     if self._permission_result:
                         self.chat_pane.add_permission_result(event.tool, True)
-                        result = await self.agent.registry.call(event.tool, event.arguments)
-                        self.chat_pane.add_tool_event(
-                            StreamEvent(type="tool_end", tool=event.tool, content=result)
-                        )
-                        self.agent.messages.append(
-                            self.agent.messages.pop()
-                        )
                     else:
                         self.chat_pane.add_permission_result(event.tool, False)
 
@@ -1328,6 +1327,11 @@ class OktigentApp(App):
             self.chat_pane.hide_thinking()
             if stream_widget:
                 stream_widget.finish()
+            elif not accumulated_content:
+                self.chat_pane.add_status(
+                    "Model returned an empty response. This model may not support conversational chat or tool calling.",
+                    style="dim yellow",
+                )
             self.tool_dock.set_state("idle")
 
         except Exception as e:

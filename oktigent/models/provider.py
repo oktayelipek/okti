@@ -112,6 +112,11 @@ class Message:
     token_usage: TokenUsage | None = None
     model: str | None = None
 
+    def __post_init__(self) -> None:
+        """Ensure content is never None (providers may return None for tool-only responses)."""
+        if self.content is None:
+            self.content = ""
+
     def has_tool_calls(self) -> bool:
         return len(self.tool_calls) > 0
 

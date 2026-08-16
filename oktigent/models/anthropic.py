@@ -108,6 +108,8 @@ class AnthropicProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> ProviderResponse:
+        from oktigent.models.retry import retry_with_backoff
+
         system, converted = self._convert_messages(messages)
         payload: dict[str, Any] = {
             "model": model or "claude-sonnet-4-20250514",
@@ -121,14 +123,17 @@ class AnthropicProvider(BaseProvider):
         if temperature is not None:
             payload["temperature"] = temperature
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{self.base_url}/v1/messages",
-                json=payload,
-                headers=self._headers(),
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        async def _call():
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{self.base_url}/v1/messages",
+                    json=payload,
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        data = await retry_with_backoff(_call)
 
         # Parse response
         content_text = ""
@@ -183,58 +188,88 @@ class AnthropicProvider(BaseProvider):
         current_tool_args = ""
         tool_index = 0
 
-        async with httpx.AsyncClient(timeout=300) as client:
-            async with client.stream(
-                "POST",
-                f"{self.base_url}/v1/messages",
-                json=payload,
-                headers=self._headers(),
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data = json.loads(line[6:])
-                    event_type = data.get("type", "")
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=300) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self.base_url}/v1/messages",
+                        json=payload,
+                        headers=self._headers(),
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            raw = await resp.aread()
+                            err_text = raw.decode()
+                            if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                                import asyncio as _aio
+                                delay = 2 ** attempt
+                                retry_after = resp.headers.get("retry-after", "")
+                                try:
+                                    delay = max(delay, float(retry_after))
+                                except (ValueError, TypeError):
+                                    pass
+                                logger.warning("Anthropic HTTP %d (attempt %d/%d), retrying in %.1fs",
+                                    resp.status_code, attempt + 1, max_retries + 1, delay)
+                                await _aio.sleep(delay)
+                                continue
+                            raise RuntimeError(f"[Anthropic API Error {resp.status_code}]: {err_text}")
 
-                    if event_type == "content_block_start":
-                        block = data.get("content_block", {})
-                        if block.get("type") == "tool_use":
-                            current_tool_id = block.get("id", "")
-                            current_tool_name = block.get("name", "")
-                            current_tool_args = ""
-                    elif event_type == "content_block_delta":
-                        delta = data.get("delta", {})
-                        if delta.get("type") == "text_delta":
-                            yield StreamChunk(content_delta=delta.get("text", ""))
-                        elif delta.get("type") == "input_json_delta":
-                            current_tool_args += delta.get("partial_json", "")
-                    elif event_type == "content_block_stop":
-                        if current_tool_name:
-                            try:
-                                args = json.loads(current_tool_args) if current_tool_args else {}
-                            except json.JSONDecodeError:
-                                args = {"_raw": current_tool_args}
-                            yield StreamChunk(
-                                tool_call_delta=ToolCall(
-                                    id=current_tool_id,
-                                    name=current_tool_name,
-                                    arguments=args,
-                                )
-                            )
-                            current_tool_name = ""
-                            current_tool_id = ""
-                            tool_index += 1
-                    elif event_type == "message_delta":
-                        stop = data.get("delta", {}).get("stop_reason")
-                        if stop:
-                            usage_data = data.get("usage", {})
-                            yield StreamChunk(
-                                finish_reason=stop,
-                                token_usage=TokenUsage(
-                                    completion_tokens=usage_data.get("output_tokens", 0),
-                                ),
-                            )
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data = json.loads(line[6:])
+                            event_type = data.get("type", "")
+
+                            if event_type == "content_block_start":
+                                block = data.get("content_block", {})
+                                if block.get("type") == "tool_use":
+                                    current_tool_id = block.get("id", "")
+                                    current_tool_name = block.get("name", "")
+                                    current_tool_args = ""
+                            elif event_type == "content_block_delta":
+                                delta = data.get("delta", {})
+                                if delta.get("type") == "text_delta":
+                                    yield StreamChunk(content_delta=delta.get("text", ""))
+                                elif delta.get("type") == "input_json_delta":
+                                    current_tool_args += delta.get("partial_json", "")
+                            elif event_type == "content_block_stop":
+                                if current_tool_name:
+                                    try:
+                                        args = json.loads(current_tool_args) if current_tool_args else {}
+                                    except json.JSONDecodeError:
+                                        args = {"_raw": current_tool_args}
+                                    yield StreamChunk(
+                                        tool_call_delta=ToolCall(
+                                            id=current_tool_id,
+                                            name=current_tool_name,
+                                            arguments=args,
+                                        )
+                                    )
+                                    current_tool_name = ""
+                                    current_tool_id = ""
+                                    tool_index += 1
+                            elif event_type == "message_delta":
+                                stop = data.get("delta", {}).get("stop_reason")
+                                if stop:
+                                    usage_data = data.get("usage", {})
+                                    yield StreamChunk(
+                                        finish_reason=stop,
+                                        token_usage=TokenUsage(
+                                            completion_tokens=usage_data.get("output_tokens", 0),
+                                        ),
+                                    )
+                        return  # Stream completed
+
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+                if attempt < max_retries:
+                    import asyncio as _aio
+                    delay = min(2 ** attempt, 30)
+                    logger.warning("Anthropic connection error %s (attempt %d/%d), retrying in %.1fs",
+                        type(e).__name__, attempt + 1, max_retries + 1, delay)
+                    await _aio.sleep(delay)
+                    continue
+                raise
 
     def list_models(self) -> list[str]:
         return [

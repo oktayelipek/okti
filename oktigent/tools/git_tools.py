@@ -419,3 +419,27 @@ def register_git_tools(registry: ToolRegistry) -> None:
         handler=git_status_detailed,
         risk_level="low",
     ))
+
+    registry.register(ToolDef(
+        name="git_blame",
+        description="Show who last modified each line of a file.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path to blame"},
+                "line_start": {"type": "integer", "description": "Start line (optional)"},
+                "line_end": {"type": "integer", "description": "End line (optional)"},
+            },
+            "required": ["path"],
+        },
+        handler=git_blame,
+        risk_level="low",
+    ))
+
+    registry.register(ToolDef(
+        name="git_remote_url",
+        description="Show the remote URL of the current repository.",
+        parameters={"type": "object", "properties": {}},
+        handler=git_remote_url,
+        risk_level="low",
+    ))

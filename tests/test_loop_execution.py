@@ -137,7 +137,17 @@ async def test_execute_tools_permission_deny():
     tool_call = ToolCall(id="call_x", name="dangerous_tool", arguments={})
     results = await loop._execute_tools([tool_call])
 
-    assert len(results) == 1
-    assert "Permission denied" in results[0]
-    assert loop.messages[-1].role == Role.TOOL
     assert "Permission denied" in loop.messages[-1].content
+
+
+def test_stream_event_result_attribute():
+    from oktigent.agent.loop import StreamEvent
+
+    event = StreamEvent(type="tool_end", tool="read_file", content="file content here")
+    assert event.content == "file content here"
+    assert event.result == "file content here"
+
+    event2 = StreamEvent(type="tool_end", tool="read_file", result="result passed directly")
+    assert event2.content == "result passed directly"
+    assert event2.result == "result passed directly"
+

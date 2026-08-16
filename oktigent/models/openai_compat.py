@@ -89,21 +89,21 @@ class OpenAICompatProvider(BaseProvider):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> ProviderResponse:
+        from oktigent.models.retry import retry_with_backoff
+
         payload = self._build_payload(messages, tools, model, max_tokens, temperature, stream=False)
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                headers=self._headers(),
-            )
-            if resp.status_code >= 400:
-                try:
-                    err_json = resp.json()
-                    err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or resp.text
-                except Exception:
-                    err_msg = resp.text
-                raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
-            data = resp.json()
+
+        async def _call():
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        data = await retry_with_backoff(_call)
 
         choice = data["choices"][0]
         msg = choice["message"]
@@ -148,85 +148,119 @@ class OpenAICompatProvider(BaseProvider):
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
         payload = self._build_payload(messages, tools, model, max_tokens, temperature, stream=True)
-        async with httpx.AsyncClient(timeout=120) as client:
-            async with client.stream(
-                "POST",
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                headers=self._headers(),
-            ) as resp:
-                if resp.status_code >= 400:
-                    raw = await resp.aread()
-                    try:
-                        err_json = json.loads(raw.decode())
-                        err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or raw.decode()
-                    except Exception:
-                        err_msg = raw.decode()
 
-                    if resp.status_code in (400, 422) and tools:
-                        logger.warning("Provider %s rejected tools schema. Retrying without tools...", self.provider_name)
-                        async for chunk in self.stream_chat(messages, tools=None, model=model, max_tokens=max_tokens, temperature=temperature):
-                            yield chunk
-                        return
+        max_retries = 3
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=120) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self.base_url}/chat/completions",
+                        json=payload,
+                        headers=self._headers(),
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            raw = await resp.aread()
+                            try:
+                                err_json = json.loads(raw.decode())
+                                err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or raw.decode()
+                            except Exception:
+                                err_msg = raw.decode()
 
-                    raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        yield StreamChunk(finish_reason="stop")
-                        return
-                    data = json.loads(data_str)
-                    choice = data.get("choices", [{}])[0]
-                    delta = choice.get("delta", {})
-                    finish = choice.get("finish_reason")
+                            # Retry on rate limit / server errors
+                            if resp.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                                import asyncio as _aio
+                                delay = 2 ** attempt
+                                retry_after = resp.headers.get("retry-after", "")
+                                try:
+                                    delay = max(delay, float(retry_after))
+                                except (ValueError, TypeError):
+                                    pass
+                                logger.warning("HTTP %d (attempt %d/%d), retrying in %.1fs",
+                                    resp.status_code, attempt + 1, max_retries + 1, delay)
+                                await _aio.sleep(delay)
+                                continue
 
-                    content = delta.get("content") or ""
-                    reasoning = delta.get("reasoning") or delta.get("thinking") or ""
-                    if content:
-                        yield StreamChunk(content_delta=content)
-                    elif reasoning:
-                        yield StreamChunk(content_delta=reasoning)
+                            if resp.status_code in (400, 422) and tools:
+                                logger.warning("Provider %s rejected tools schema. Retrying without tools...", self.provider_name)
+                                async for chunk in self.stream_chat(messages, tools=None, model=model, max_tokens=max_tokens, temperature=temperature):
+                                    yield chunk
+                                return
 
-                    for tc_delta in delta.get("tool_calls", []):
-                        func = tc_delta.get("function", {})
-                        # OpenAI sends arguments as incremental JSON string
-                        args_str = func.get("arguments", "")
-                        args = {"_raw": args_str} if args_str else {}
-                        yield StreamChunk(
-                            tool_call_delta=ToolCall(
-                                id=tc_delta.get("id", ""),
-                                name=func.get("name", ""),
-                                arguments=args,
-                            )
-                        )
+                            raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
 
-                    if finish:
-                        u_data = data.get("usage", {})
-                        p_tok = u_data.get("prompt_tokens", 0)
-                        c_tok = u_data.get("completion_tokens", 0)
-                        tot_tok = u_data.get("total_tokens", 0) or (p_tok + c_tok)
-                        c_read = (
-                            u_data.get("prompt_tokens_details", {}).get("cached_tokens", 0)
-                            or u_data.get("cache_read_input_tokens", 0)
-                            or 0
-                        )
-                        c_write = u_data.get("cache_creation_input_tokens", 0) or 0
-                        m_name = data.get("model", model or "")
-                        cost = estimate_cost(m_name, p_tok, c_tok, c_read)
+                        # Success — process the stream
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                yield StreamChunk(finish_reason="stop")
+                                return
+                            data = json.loads(data_str)
+                            choice = data.get("choices", [{}])[0]
+                            delta = choice.get("delta", {})
+                            finish = choice.get("finish_reason")
 
-                        yield StreamChunk(
-                            finish_reason=finish,
-                            token_usage=TokenUsage(
-                                prompt_tokens=p_tok,
-                                completion_tokens=c_tok,
-                                total_tokens=tot_tok,
-                                cache_read_tokens=c_read,
-                                cache_write_tokens=c_write,
-                                cost_usd=cost,
-                            ),
-                        )
+                            content = delta.get("content") or ""
+                            reasoning = delta.get("reasoning") or delta.get("thinking") or ""
+                            if content:
+                                yield StreamChunk(content_delta=content)
+                            elif reasoning:
+                                yield StreamChunk(content_delta=reasoning)
+
+                            for tc_delta in delta.get("tool_calls", []):
+                                func = tc_delta.get("function", {})
+                                args_str = func.get("arguments", "")
+                                args = {"_raw": args_str} if args_str else {}
+                                yield StreamChunk(
+                                    tool_call_delta=ToolCall(
+                                        id=tc_delta.get("id", ""),
+                                        name=func.get("name", ""),
+                                        arguments=args,
+                                    )
+                                )
+
+                            if finish:
+                                u_data = data.get("usage", {})
+                                p_tok = u_data.get("prompt_tokens", 0)
+                                c_tok = u_data.get("completion_tokens", 0)
+                                tot_tok = u_data.get("total_tokens", 0) or (p_tok + c_tok)
+                                c_read = (
+                                    u_data.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+                                    or u_data.get("cache_read_input_tokens", 0)
+                                    or 0
+                                )
+                                c_write = u_data.get("cache_creation_input_tokens", 0) or 0
+                                m_name = data.get("model", model or "")
+                                cost = estimate_cost(m_name, p_tok, c_tok, c_read)
+
+                                yield StreamChunk(
+                                    finish_reason=finish,
+                                    token_usage=TokenUsage(
+                                        prompt_tokens=p_tok,
+                                        completion_tokens=c_tok,
+                                        total_tokens=tot_tok,
+                                        cache_read_tokens=c_read,
+                                        cache_write_tokens=c_write,
+                                        cost_usd=cost,
+                                    ),
+                                )
+                        return  # Stream completed successfully
+
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+                if attempt < max_retries:
+                    import asyncio as _aio
+                    delay = min(2 ** attempt, 30)
+                    logger.warning("Connection error %s (attempt %d/%d), retrying in %.1fs",
+                        type(e).__name__, attempt + 1, max_retries + 1, delay)
+                    await _aio.sleep(delay)
+                    continue
+                raise
+            except Exception as e:
+                logger.error("Stream error from %s: %s", self.provider_name, e)
+                yield StreamChunk(content_delta=f"\n\n[Stream error: {e}]", finish_reason="error")
+                return
 
     def list_models(self) -> list[str]:
         """Fetch models from the provider's /models endpoint."""
