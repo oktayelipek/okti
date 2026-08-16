@@ -44,7 +44,7 @@ dev = [
 oktigent = "oktigent.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/oktigent/oktigent"
+Homepage = "https://github.com/oktayelipek/oktigent"
 
 [tool.hatch.build.targets.wheel]
 packages = ["oktigent"]

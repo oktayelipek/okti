@@ -77,7 +77,7 @@ class OpenAICompatProvider(BaseProvider):
         }
         # OpenRouter needs extra headers
         if self.provider_name == "openrouter":
-            headers["HTTP-Referer"] = "https://github.com/oktigent/oktigent"
+            headers["HTTP-Referer"] = "https://github.com/oktayelipek/oktigent"
             headers["X-Title"] = "oktigent"
         return headers
 
