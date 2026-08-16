@@ -55,6 +55,14 @@ async def _run_agent_turn(app: OktigentApp, text: str) -> None:
     await app._pilot_pause()
 
 
+def _screenshot_contains(app: OktigentApp, needle: str) -> bool:
+    """Return True if `needle` is drawn to the screen (via exported SVG)."""
+    svg = app.export_screenshot()
+    text = svg.decode("utf-8", errors="replace") if isinstance(svg, bytes) else str(svg)
+    # Textual SVG screenshots encode spaces as &#160; (non-breaking space).
+    return needle in text or needle.replace(" ", "\u00a0") in text
+
+
 @pytest.mark.asyncio
 async def test_streamed_response_rendered_and_scrolled(monkeypatch):
     """A long streamed response must be rendered and scrolled into view."""
@@ -79,6 +87,12 @@ async def test_streamed_response_rendered_and_scrolled(monkeypatch):
         widget = widgets[-1]
         assert widget._full_content == long_text
         assert widget.is_mounted
+
+        # The response must be actually DRAWN to the screen (regression guard
+        # for the _render_content override bug which left content unrendered).
+        assert _screenshot_contains(app, "Selam!"), (
+            "response text was stored in the widget but not drawn to the screen"
+        )
 
         # The chat pane must be scrolled to the bottom so the response is visible
         cp = app.chat_pane
@@ -107,3 +121,6 @@ async def test_short_streamed_response_rendered(monkeypatch):
         widgets = [w for w in app.chat_pane.children if isinstance(w, StreamingMarkdown)]
         assert widgets, "StreamingMarkdown widget was not mounted in the chat pane"
         assert widgets[-1]._full_content == "Hello world"
+        assert _screenshot_contains(app, "Hello"), (
+            "response text was stored in the widget but not drawn to the screen"
+        )
