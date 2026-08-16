@@ -70,7 +70,13 @@ class OpenAICompatProvider(BaseProvider):
                 json=payload,
                 headers=self._headers(),
             )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or resp.text
+                except Exception:
+                    err_msg = resp.text
+                raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
             data = resp.json()
 
         choice = data["choices"][0]
@@ -107,7 +113,14 @@ class OpenAICompatProvider(BaseProvider):
                 json=payload,
                 headers=self._headers(),
             ) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    raw = await resp.aread()
+                    try:
+                        err_json = json.loads(raw.decode())
+                        err_msg = err_json.get("error", {}).get("message") or err_json.get("message") or raw.decode()
+                    except Exception:
+                        err_msg = raw.decode()
+                    raise RuntimeError(f"[{self.provider_name.capitalize()} API Error {resp.status_code}]: {err_msg}")
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data: "):
                         continue
