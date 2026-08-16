@@ -16,6 +16,7 @@ from oktigent.config import (
     OktigentConfig,
     ProviderConfig,
     ProviderID,
+    save_config_toml,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,43 +75,6 @@ def check_needs_onboarding(config_path: Path | None = None) -> bool:
         pass
 
     return False
-
-
-def save_config_toml(config: OktigentConfig, path: Path | None = None) -> Path:
-    """Serialize OktigentConfig to a clean TOML file."""
-    cfg_path = path or _DEFAULT_CONFIG_FILE
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-
-    lines = [
-        "# oktigent configuration",
-        f'default_provider = "{config.default_provider.value}"',
-        f'default_model = "{config.default_model}"',
-        "",
-        "[permissions]",
-        f"yolo = {'true' if config.permissions.yolo else 'false'}",
-        "",
-        "[context]",
-        f"max_tokens = {config.context.max_tokens}",
-        f"compaction_threshold = {config.context.compaction_threshold}",
-        "",
-    ]
-
-    for p_id, p_cfg in config.providers.items():
-        lines.append(f"[providers.{p_id}]")
-        if p_cfg.api_key:
-            lines.append(f'api_key = "{p_cfg.api_key}"')
-        if p_cfg.base_url:
-            lines.append(f'base_url = "{p_cfg.base_url}"')
-        if p_cfg.model:
-            lines.append(f'model = "{p_cfg.model}"')
-        lines.append(f"max_tokens = {p_cfg.max_tokens}")
-        lines.append(f"temperature = {p_cfg.temperature}")
-        lines.append("")
-
-    content = "\n".join(lines).strip() + "\n"
-    cfg_path.write_text(content, encoding="utf-8")
-    logger.info("Saved configuration to %s", cfg_path)
-    return cfg_path
 
 
 class OnboardingScreen(ModalScreen[OktigentConfig | None]):

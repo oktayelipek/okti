@@ -532,15 +532,23 @@ class SlashCommandHandler:
             self.app.chat_pane.add_status(f"Error opening model picker: {e}", style="bold red")
 
     def _on_model_picked(self, selected_model: str | None) -> None:
-        """Handle model selection from modal dialog."""
+        """Handle model selection from modal dialog and persist to config."""
         if selected_model:
             self.app.config.default_model = selected_model
             provider_name = self.app.config.default_provider.value
+            if provider_name in self.app.config.providers:
+                self.app.config.providers[provider_name].model = selected_model
             self.app.tool_dock.update_model(f"{provider_name} / {selected_model}")
             self.app.chat_pane.add_status(f"Active model switched to: `{selected_model}`", style="bold green")
 
+            from oktigent.config import save_config_toml
+            try:
+                save_config_toml(self.app.config)
+            except Exception as e:
+                logger.warning("Failed to auto-save config.toml: %s", e)
+
     async def _model(self, args: str) -> None:
-        """Switch active model directly."""
+        """Switch active model directly and persist to config."""
         new_model = args.strip()
         if not new_model:
             self.app.chat_pane.add_status(
@@ -551,8 +559,16 @@ class SlashCommandHandler:
 
         self.app.config.default_model = new_model
         provider_name = self.app.config.default_provider.value
+        if provider_name in self.app.config.providers:
+            self.app.config.providers[provider_name].model = new_model
         self.app.tool_dock.update_model(f"{provider_name} / {new_model}")
         self.app.chat_pane.add_status(f"Active model switched to: `{new_model}`", style="bold green")
+
+        from oktigent.config import save_config_toml
+        try:
+            save_config_toml(self.app.config)
+        except Exception as e:
+            logger.warning("Failed to auto-save config.toml: %s", e)
 
     async def _provider(self, args: str) -> None:
         if not args:
@@ -572,7 +588,7 @@ class SlashCommandHandler:
             )
             return
 
-        from oktigent.config import ProviderID
+        from oktigent.config import ProviderID, save_config_toml
         self.app.config.default_provider = ProviderID(provider_id)
 
         # Re-create provider
@@ -581,6 +597,7 @@ class SlashCommandHandler:
             self.app.agent.provider = create_provider(self.app.config)
             self.app.tool_dock.update_model(f"Provider: {provider_id}")
             self.app.chat_pane.add_status(f"Switched to provider: {provider_id}", style="green")
+            save_config_toml(self.app.config)
         except Exception as e:
             self.app.chat_pane.add_status(f"Error switching provider: {e}", style="bold red")
 
