@@ -91,7 +91,7 @@ class OpenAICompatProvider(BaseProvider):
 
         message = Message(
             role=Role.ASSISTANT,
-            content=msg.get("content", ""),
+            content=msg.get("content") or msg.get("reasoning") or msg.get("thinking") or "",
             tool_calls=tool_calls,
             model=data.get("model", model or ""),
         )
@@ -133,9 +133,12 @@ class OpenAICompatProvider(BaseProvider):
                     delta = choice.get("delta", {})
                     finish = choice.get("finish_reason")
 
-                    content = delta.get("content", "")
+                    content = delta.get("content") or ""
+                    reasoning = delta.get("reasoning") or delta.get("thinking") or ""
                     if content:
                         yield StreamChunk(content_delta=content)
+                    elif reasoning:
+                        yield StreamChunk(content_delta=reasoning)
 
                     for tc_delta in delta.get("tool_calls", []):
                         func = tc_delta.get("function", {})
