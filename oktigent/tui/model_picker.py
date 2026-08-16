@@ -12,7 +12,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.events import Key
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, OptionList, Static, Tabs, Tab
+from textual.widgets import Input, Label, OptionList, Static, Tabs
 from textual.widgets.option_list import Option
 
 logger = logging.getLogger(__name__)
@@ -118,13 +118,15 @@ class ModelPickerModal(ModalScreen[str | None]):
         with Vertical(id="picker-container"):
             yield Label(f"🤖 Select Model — Provider: [bold cyan]{self.provider_name}[/]", id="picker-title")
 
-            with Tabs(id="filter-tabs"):
-                yield Tab("All Models", id="tab-all")
-                yield Tab("🆓 Free Tier", id="tab-free")
-                yield Tab("⭐ Featured", id="tab-featured")
-                yield Tab("Claude", id="tab-claude")
-                yield Tab("GPT", id="tab-gpt")
-                yield Tab("DeepSeek", id="tab-deepseek")
+            yield Tabs(
+                "All Models",
+                "🆓 Free Tier",
+                "⭐ Featured",
+                "Claude",
+                "GPT",
+                "DeepSeek",
+                id="filter-tabs",
+            )
 
             self.search_input = Input(
                 placeholder="🔍 Search model by name (e.g. sonnet, r1, flash, free)...",
@@ -201,8 +203,21 @@ class ModelPickerModal(ModalScreen[str | None]):
 
     @on(Tabs.TabActivated, "#filter-tabs")
     def on_tab_activated(self, event: Tabs.TabActivated) -> None:
-        if event.tab and event.tab.id:
-            self.active_tab = event.tab.id
+        if event.tab:
+            label_text = str(event.tab.label.plain if hasattr(event.tab.label, "plain") else event.tab.label).lower()
+            if "free" in label_text:
+                self.active_tab = "tab-free"
+            elif "featured" in label_text:
+                self.active_tab = "tab-featured"
+            elif "claude" in label_text:
+                self.active_tab = "tab-claude"
+            elif "gpt" in label_text:
+                self.active_tab = "tab-gpt"
+            elif "deepseek" in label_text:
+                self.active_tab = "tab-deepseek"
+            else:
+                self.active_tab = "tab-all"
+
             self._populate_options(search_query=self.search_input.value)
 
     @on(OptionList.OptionSelected, "#picker-options")
