@@ -52,6 +52,21 @@ def test_check_needs_onboarding_no_file(tmp_path):
         os.environ.update(orig_env)
 
 
+def test_check_needs_onboarding_missing_key_in_file(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('default_provider = "openrouter"\n', encoding="utf-8")
+
+    orig_env = os.environ.copy()
+    for k in ["OPENROUTER_API_KEY", "OKTIGENT_OPENROUTER_API_KEY"]:
+        os.environ.pop(k, None)
+
+    try:
+        assert check_needs_onboarding(cfg_file) is True
+    finally:
+        os.environ.clear()
+        os.environ.update(orig_env)
+
+
 def test_onboarding_screen_instantiation():
     config = OktigentConfig()
     screen = OnboardingScreen(config)

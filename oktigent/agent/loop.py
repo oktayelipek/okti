@@ -48,7 +48,12 @@ class AgentLoop:
         system_prompt: str | None = None,
     ):
         self.config = config
-        self.provider: BaseProvider = create_provider(config)
+        try:
+            self.provider: BaseProvider = create_provider(config)
+        except Exception as e:
+            logger.debug("Provider initialization deferred (needs setup/credentials): %s", e)
+            from oktigent.models.ollama import OllamaProvider
+            self.provider = OllamaProvider()
         self.registry = registry or self._build_default_registry()
         self.permissions = PermissionManager(config, self.registry)
         self.context = ContextManager(config)

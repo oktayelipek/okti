@@ -44,20 +44,36 @@ _ENV_KEY_MAP = {
 
 
 def check_needs_onboarding(config_path: Path | None = None) -> bool:
-    """Check if the user is launching oktigent for the first time without configuration."""
+    """Check if the user needs to run onboarding (no config or missing required API keys)."""
     cfg_file = config_path or _DEFAULT_CONFIG_FILE
-    if cfg_file.exists():
-        return False
+    if not cfg_file.exists():
+        # Check if any common env var is already provided
+        for env_var in _ENV_KEY_MAP.values():
+            if os.environ.get(env_var) or os.environ.get(f"OKTIGENT_{env_var}"):
+                return False
 
-    # Check if any common env var is already provided
-    for env_var in _ENV_KEY_MAP.values():
-        if os.environ.get(env_var) or os.environ.get(f"OKTIGENT_{env_var}"):
+        if os.environ.get("OLLAMA_HOST"):
             return False
 
-    if os.environ.get("OLLAMA_HOST"):
-        return False
+        return True
 
-    return True
+    # If config file exists, check if the configured provider requires an API key that is missing
+    try:
+        import tomllib
+        with open(cfg_file, "rb") as f:
+            data = tomllib.load(f)
+        provider = data.get("default_provider", "ollama")
+        if provider != "ollama":
+            p_data = data.get("providers", {}).get(provider, {})
+            key = p_data.get("api_key", "")
+            env_var = _ENV_KEY_MAP.get(provider, "")
+            env_key = os.environ.get(env_var, "") or os.environ.get(f"OKTIGENT_{env_var}", "")
+            if not key and not env_key:
+                return True  # Configured provider has no key -> needs onboarding
+    except Exception:
+        pass
+
+    return False
 
 
 def save_config_toml(config: OktigentConfig, path: Path | None = None) -> Path:
