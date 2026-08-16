@@ -29,6 +29,10 @@ _PROVIDER_URLS: dict[str, str] = {
 }
 
 
+class _ToolUnsupported(Exception):
+    """Raised when a provider/model rejects a request because it does not support tool calling."""
+
+
 def estimate_cost(model_name: str, prompt_tokens: int, completion_tokens: int, cache_read: int = 0) -> float:
     """Estimate USD cost based on model pricing per million tokens."""
     m = (model_name or "").lower()
@@ -91,19 +95,31 @@ class OpenAICompatProvider(BaseProvider):
     ) -> ProviderResponse:
         from oktigent.models.retry import retry_with_backoff
 
-        payload = self._build_payload(messages, tools, model, max_tokens, temperature, stream=False)
-
-        async def _call():
+        async def _call(use_tools: bool):
+            payload = self._build_payload(messages, tools if use_tools else None, model, max_tokens, temperature, stream=False)
             async with httpx.AsyncClient(timeout=120) as client:
                 resp = await client.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=self._headers(),
                 )
+                if resp.status_code >= 400 and use_tools:
+                    try:
+                        err = resp.json()
+                        err_msg = err.get("error", {}).get("message") or err.get("message") or resp.text
+                    except Exception:
+                        err_msg = resp.text
+                    if resp.status_code in (400, 404, 422) and "tool" in err_msg.lower():
+                        raise _ToolUnsupported(err_msg)
                 resp.raise_for_status()
                 return resp.json()
 
-        data = await retry_with_backoff(_call)
+        try:
+            data = await retry_with_backoff(lambda: _call(True))
+        except _ToolUnsupported as e:
+            logger.warning("Provider %s does not support tools (%s). Retrying without tools...",
+                self.provider_name, str(e)[:120])
+            data = await retry_with_backoff(lambda: _call(False))
 
         choice = data["choices"][0]
         msg = choice["message"]
@@ -181,8 +197,19 @@ class OpenAICompatProvider(BaseProvider):
                                 await _aio.sleep(delay)
                                 continue
 
-                            if resp.status_code in (400, 422) and tools:
-                                logger.warning("Provider %s rejected tools schema. Retrying without tools...", self.provider_name)
+                            # Providers like OpenRouter return 404 with a "tool use"
+                            # message when the chosen model does not support tool
+                            # calling. Retry without tools in that case.
+                            tool_unsupported = (
+                                resp.status_code in (400, 404, 422)
+                                and "tool" in err_msg.lower()
+                            )
+                            if (resp.status_code in (400, 422) or tool_unsupported) and tools:
+                                logger.warning(
+                                    "Provider %s does not support tools with this model "
+                                    "(HTTP %d: %s). Retrying without tools...",
+                                    self.provider_name, resp.status_code, err_msg[:120],
+                                )
                                 async for chunk in self.stream_chat(messages, tools=None, model=model, max_tokens=max_tokens, temperature=temperature):
                                     yield chunk
                                 return
