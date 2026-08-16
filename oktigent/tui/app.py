@@ -217,6 +217,7 @@ class SlashCommandHandler:
             "/tokens": self._tokens,
             "/compact": self._compact,
             "/refresh": self._refresh,
+            "/git": self._git,
         }
 
         handler = handlers.get(cmd)
@@ -242,7 +243,8 @@ class SlashCommandHandler:
 | `/load <id>` | Load a session by ID |
 | `/tokens` | Show token usage |
 | `/compact` | Force context compaction |
-| `/refresh` | Refresh file tree |"""
+| `/refresh` | Refresh file tree |
+| `/git` | Git operations (status, diff, log, commit) |"""
         self.app.chat_pane.add_assistant_message(help_text)
 
     async def _plan(self, args: str) -> None:
@@ -484,6 +486,60 @@ class SlashCommandHandler:
             self.app.chat_pane.add_status("File tree refreshed.", style="green")
         except Exception as e:
             self.app.chat_pane.add_status(f"Refresh error: {e}", style="bold red")
+
+    async def _git(self, args: str) -> None:
+        """Git operations."""
+        from oktigent.tools.git_tools import (
+            git_status, git_diff, git_log, git_add, git_commit,
+            git_push, git_branch, git_status_detailed, git_remote_url,
+        )
+
+        parts = args.strip().split(maxsplit=1)
+        subcmd = parts[0] if parts else "status"
+        subargs = parts[1] if len(parts) > 1 else ""
+
+        try:
+            if subcmd in ("s", "status", ""):
+                result = await git_status_detailed()
+            elif subcmd in ("d", "diff"):
+                path = subargs if subargs else None
+                result = await git_diff(path=path)
+            elif subcmd in ("l", "log"):
+                count = int(subargs) if subargs.isdigit() else 10
+                result = await git_log(count=count)
+            elif subcmd in ("a", "add"):
+                files = subargs if subargs else "."
+                result = await git_add(files)
+            elif subcmd in ("c", "commit"):
+                if not subargs:
+                    result = "Usage: /git commit <message>"
+                else:
+                    result = await git_commit(subargs)
+            elif subcmd in ("p", "push"):
+                result = await git_push()
+            elif subcmd in ("b", "branch"):
+                result = await git_branch()
+            elif subcmd == "url":
+                result = await git_remote_url()
+            elif subcmd == "help":
+                result = """## Git Commands
+
+| Command | Description |
+|---------|-------------|
+| `/git status` | Show detailed status |
+| `/git diff` | Show changes |
+| `/git log` | Show recent commits |
+| `/git add <files>` | Stage files |
+| `/git commit <msg>` | Create commit |
+| `/git push` | Push to remote |
+| `/git branch` | List branches |
+| `/git url` | Show remote URL |"""
+            else:
+                result = f"Unknown git subcommand: {subcmd}. Try /git help"
+
+            self.app.chat_pane.add_assistant_message(f"```\n{result}\n```")
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Git error: {e}", style="bold red")
 
 
 def _summarize_args(args: dict) -> str:

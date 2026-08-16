@@ -17,7 +17,7 @@ import logging
 from typing import Any, AsyncIterator, Callable
 
 from oktigent.agent.permissions import PermissionManager
-from oktigent.config import OktigentConfig, PermissionLevel
+from oktigent.config import OktigentConfig, PermissionLevel, ProviderID
 from oktigent.context.manager import ContextManager
 from oktigent.context.memory import load_project_memory, build_memory_prompt
 from oktigent.models.factory import create_provider
@@ -94,11 +94,13 @@ class AgentLoop:
         from oktigent.tools.files import register_file_tools
         from oktigent.tools.bash import register_bash_tools
         from oktigent.tools.web import register_web_tools
+        from oktigent.tools.git_tools import register_git_tools
 
         registry = ToolRegistry()
         register_file_tools(registry)
         register_bash_tools(registry)
         register_web_tools(registry)
+        register_git_tools(registry)
         return registry
 
     def _build_system_prompt(self) -> str:
@@ -270,19 +272,58 @@ class AgentLoop:
         return response
 
     async def _stream_model(self) -> AsyncIterator[StreamChunk]:
-        """Streaming model call."""
+        """Streaming model call with fallback."""
         provider_config = self.config.providers.get(self.config.default_provider.value)
         max_tokens = provider_config.max_tokens if provider_config else 8192
         temperature = provider_config.temperature if provider_config else 0.0
 
-        async for chunk in self.provider.stream_chat(
-            messages=self.messages,
-            tools=self.registry.to_schemas(),
-            model=self.config.default_model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        ):
-            yield chunk
+        try:
+            async for chunk in self.provider.stream_chat(
+                messages=self.messages,
+                tools=self.registry.to_schemas(),
+                model=self.config.default_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            ):
+                yield chunk
+        except Exception as e:
+            logger.warning("Provider %s failed: %s", self.config.default_provider.value, e)
+            # Try fallback to a different provider if available
+            fallback = self._get_fallback_provider()
+            if fallback:
+                logger.info("Trying fallback provider: %s", fallback.provider_id)
+                self.provider = fallback
+                async for chunk in fallback.stream_chat(
+                    messages=self.messages,
+                    tools=self.registry.to_schemas(),
+                    model=self.config.default_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ):
+                    yield chunk
+            else:
+                raise
+
+    def _get_fallback_provider(self) -> BaseProvider | None:
+        """Get a fallback provider if the current one fails."""
+        current = self.config.default_provider.value
+        fallback_order = ["ollama", "openai", "anthropic", "gemini", "deepseek"]
+
+        for provider_id in fallback_order:
+            if provider_id == current:
+                continue
+            provider_config = self.config.providers.get(provider_id)
+            if provider_config and provider_config.api_key:
+                try:
+                    from oktigent.models.factory import create_provider
+                    fallback_config = OktigentConfig(
+                        default_provider=ProviderID(provider_id),
+                        providers=self.config.providers,
+                    )
+                    return create_provider(fallback_config)
+                except Exception:
+                    continue
+        return None
 
 
 class StreamEvent:
