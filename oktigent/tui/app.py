@@ -1035,9 +1035,13 @@ class OktigentApp(App):
         # Register permission callback
         self.agent.on("permission_ask", self._handle_permission_request)
 
+        # Set default focus to input bar
+        self.input_bar.focus()
+
     def _on_onboarding_completed(self, updated_config: OktigentConfig | None) -> None:
         """Handle completion of the onboarding screen."""
         if not updated_config:
+            self.input_bar.focus()
             return
         self.config = updated_config
         self.agent.config = updated_config
@@ -1053,6 +1057,8 @@ class OktigentApp(App):
             )
         except Exception as e:
             self.chat_pane.add_status(f"Setup error: {e}", style="bold red")
+
+        self.input_bar.focus()
 
     async def _show_loaded_messages(self) -> None:
         """Display loaded session messages in the chat pane."""
