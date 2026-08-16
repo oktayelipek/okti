@@ -264,52 +264,53 @@ class ToolDock(Static):
         from oktigent.tui.animations import BRAILLE_SPINNER
         t = Text()
 
-        # 1. Left corner bracket & Agent Brand
+        # 1. Left corner bracket & Brand (╭─ oktigent 〉)
         t.append("╭─ ", style="bold #22c55e")
-        t.append("π", style="bold #38bdf8")
+        t.append("oktigent", style="bold #38bdf8")
         t.append(" 〉", style="dim #475569")
 
-        # 2. Model & Provider
+        # 2. Model (⚙ Opus 4.7 ⚡ · 🔵 high 〉)
         m_str = self.model_text or "Ready"
         if "/" in m_str:
             parts = m_str.split("/")
             m_name = parts[-1]
-            display_model = f"⚙ {m_name.strip()}"
+            display_model = f"⚙ {m_name.strip()} ⚡"
         else:
-            display_model = f"⚙ {m_str}"
-        t.append(display_model, style="bold #818cf8")
-        if self.speed_text:
-            t.append(f" {self.speed_text}", style="#38bdf8")
+            display_model = f"⚙ {m_str} ⚡"
+        t.append(display_model, style="bold #38bdf8")
         t.append(" 〉", style="dim #475569")
 
-        # 3. CWD
+        # 3. Working directory (📁 /path 〉)
         if self.short_cwd:
             t.append(f"📁 {self.short_cwd}", style="#94a3b8")
             t.append(" 〉", style="dim #475569")
 
-        # 4. Git branch & diffs
+        # 4. Git branch & diffs (ᚠ master +2 〉)
         if self.git_info:
             t.append(self.git_info, style="bold #f59e0b")
             t.append(" 〉", style="dim #475569")
 
-        # 5. Context window % & Cache
+        # 5. Context window % & Limit (🪟 1.9%/1M 🪄 〉)
         pct = (self.tokens_used / max(self.max_tokens, 1)) * 100
-        ctx_info = f"🪟 {pct:.1f}%/{self.max_tokens//1000}k"
-        if self.cache_pct > 0:
-            ctx_info += f" 💾{self.cache_pct}%"
+        if self.max_tokens >= 1_000_000:
+            limit_s = f"{self.max_tokens//1_000_000}M"
+        else:
+            limit_s = f"{self.max_tokens//1000}k"
+        
+        ctx_info = f"🪟 {pct:.1f}%/{limit_s} 🪄"
         t.append(ctx_info, style="#a78bfa")
         t.append(" 〉", style="dim #475569")
 
-        # 6. Cost USD
+        # 6. Cost USD ($0.26)
         if self.cost_usd == 0.0:
-            cost_s = "🆓 $0.00"
+            cost_s = "$0.00"
         elif self.cost_usd < 0.01:
             cost_s = f"${self.cost_usd:.4f}"
         else:
             cost_s = f"${self.cost_usd:.2f}"
         t.append(cost_s, style="bold #fbbf24")
 
-        # 7. Dynamic line and Task/Status at the right
+        # 7. Dynamic line and Task/Status at the right (─────── Task ─╮)
         status_disp = ""
         if self.state in ("thinking", "tool"):
             sp = BRAILLE_SPINNER[self._spinner_idx]
@@ -1006,13 +1007,6 @@ class OktigentApp(App):
         layout: vertical;
         background: #0f111a;
     }
-    #tool-dock {
-        dock: top;
-        height: 1;
-        background: #0b0d17;
-        padding: 0 1;
-        overflow: hidden;
-    }
     #chat {
         height: 1fr;
         padding: 1 2;
@@ -1025,13 +1019,25 @@ class OktigentApp(App):
         border: round #38bdf8;
         margin: 0 2;
     }
-    #input-bar {
+    #bottom-container {
         dock: bottom;
+        height: auto;
+        layout: vertical;
+        background: transparent;
+    }
+    #input-bar {
         height: 3;
-        margin: 0 1 1 1;
+        margin: 0 1 0 1;
         padding: 0 1;
         border: round #38bdf8;
         background: #131622;
+    }
+    #tool-dock {
+        height: 1;
+        background: transparent;
+        margin: 0 1 0 1;
+        padding: 0;
+        overflow: hidden;
     }
     .assistant-message {
         margin: 0 0 1 0;
@@ -1068,10 +1074,6 @@ class OktigentApp(App):
         self._force_setup = force_setup
 
     def compose(self) -> ComposeResult:
-        # Minimal top status ribbon
-        self.tool_dock = ToolDock(id="tool-dock")
-        yield self.tool_dock
-
         # Main expansive chat area
         p_name = self.config.default_provider.value if hasattr(self.config.default_provider, "value") else str(self.config.default_provider)
         m_name = self.config.default_model
@@ -1082,12 +1084,16 @@ class OktigentApp(App):
         self.suggestions_box = OptionList(id="command-suggestions")
         yield self.suggestions_box
 
-        # Modern minimal input prompt
-        self.input_bar = Input(
-            placeholder="Type a message or / for commands...",
-            id="input-bar",
-        )
-        yield self.input_bar
+        # Bottom container: input prompt + HUD telemetry bar right below it
+        with Vertical(id="bottom-container"):
+            self.input_bar = Input(
+                placeholder="Type a message or / for commands...",
+                id="input-bar",
+            )
+            yield self.input_bar
+
+            self.tool_dock = ToolDock(id="tool-dock")
+            yield self.tool_dock
 
         yield Footer()
 
