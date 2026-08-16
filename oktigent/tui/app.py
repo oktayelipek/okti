@@ -65,16 +65,8 @@ class ChatPane(VerticalScroll):
     """Main chat area with streaming support and expressive startup banner."""
 
     def compose(self) -> ComposeResult:
-        from oktigent.tui.animations import get_random_quote
-
-        welcome = Text()
-        welcome.append("\n  ✨ oktigent ", style="bold cyan")
-        welcome.append("— autonomous ai coding terminal\n", style="bold white")
-        welcome.append(f"  💡 {get_random_quote()}\n\n", style="dim italic")
-        welcome.append("  Type your prompt or press ", style="dim")
-        welcome.append("/", style="bold cyan")
-        welcome.append(" to explore slash commands.\n", style="dim")
-        yield Static(welcome, id="welcome")
+        from oktigent.tui.animations import AnimatedAsciiBanner
+        yield AnimatedAsciiBanner(id="welcome-banner")
 
     def add_user_message(self, text: str) -> None:
         msg = Text()

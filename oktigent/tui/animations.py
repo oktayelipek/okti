@@ -5,6 +5,9 @@ from __future__ import annotations
 import random
 import time
 
+from rich.text import Text
+from textual.widgets import Static
+
 BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 CYBER_SPINNER = ["▰▱▱▱▱", "▰▰▱▱▱", "▰▰▰▱▱", "▰▰▰▰▱", "▰▰▰▰▰", "▱▰▰▰▰", "▱▱▰▰▰", "▱▱▱▰▰", "▱▱▱▱▰"]
 PULSE_DOTS = ["●○○○", "○●○○", "○○●○", "○○○●", "○○●○", "○●○○"]
@@ -60,6 +63,51 @@ ASCII_LOGO = r"""
  ╚██████╔╝██║  ██╗   ██║   ██║╚██████╔╝███████╗██║ ╚████║   ██║   
   ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   
 """
+
+GRADIENT_PALETTES = [
+    ["#00f0ff", "#38bdf8", "#818cf8", "#c084fc", "#f472b6", "#fb7185"],
+    ["#38bdf8", "#818cf8", "#c084fc", "#f472b6", "#fb7185", "#00f0ff"],
+    ["#818cf8", "#c084fc", "#f472b6", "#fb7185", "#00f0ff", "#38bdf8"],
+    ["#c084fc", "#f472b6", "#fb7185", "#00f0ff", "#38bdf8", "#818cf8"],
+    ["#f472b6", "#fb7185", "#00f0ff", "#38bdf8", "#818cf8", "#c084fc"],
+    ["#fb7185", "#00f0ff", "#38bdf8", "#818cf8", "#c084fc", "#f472b6"],
+]
+
+
+class AnimatedAsciiBanner(Static):
+    """Animated rainbow/neon wave ASCII logo banner with live shimmering effect."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._frame = 0
+        self._quote = get_random_quote()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.12, self._tick)
+
+    def _tick(self) -> None:
+        self._frame += 1
+        self.refresh()
+
+    def render(self) -> Text:
+        from rich.text import Text
+        palette = GRADIENT_PALETTES[self._frame % len(GRADIENT_PALETTES)]
+        lines = ASCII_LOGO.strip().splitlines()
+
+        out = Text()
+        out.append("\n")
+        for idx, line in enumerate(lines):
+            color = palette[idx % len(palette)]
+            out.append(" " + line + "\n", style=f"bold {color}")
+
+        out.append("\n  ✦ ", style="bold yellow")
+        out.append("The Autonomous AI Coding Terminal for Builders", style="bold white")
+        out.append(" ✦\n\n", style="bold yellow")
+        out.append(f"  💡 {self._quote}\n\n", style="dim italic")
+        out.append("  Type your prompt or press ", style="dim")
+        out.append("/", style="bold cyan")
+        out.append(" to explore slash commands.\n", style="dim")
+        return out
 
 THEMES = {
     "default": """
