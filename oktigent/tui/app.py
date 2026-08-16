@@ -373,7 +373,7 @@ class SlashCommandHandler:
         prompt = build_task_prompt(task, plan.summary)
         self.app.chat_pane.add_user_message(f"Execute plan task: {task.title}")
         self.app.tool_dock.update_status(f"Task: {task.id}")
-        self.app.run_worker(self.app._run_agent(prompt), exclusive=True)
+        self.app._run_agent(prompt)
         task.status = TaskStatus.COMPLETED
 
     async def _plan(self, args: str) -> None:
@@ -1038,7 +1038,7 @@ class OktigentApp(App):
 
         # Run agent
         self.tool_dock.update_status("Thinking...")
-        self.run_worker(self._run_agent(text), exclusive=True)
+        self._run_agent(text)
 
     @work(exclusive=True)
     async def _run_agent(self, user_input: str) -> None:
