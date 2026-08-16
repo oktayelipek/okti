@@ -29,6 +29,7 @@ from textual.worker import WorkerState
 from oktigent.agent.loop import AgentLoop, StreamEvent
 from oktigent.config import OktigentConfig, PermissionLevel
 from oktigent.tui.streaming import StreamingMarkdown
+from oktigent.tui.widgets import FileTree, DiffViewer
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +207,16 @@ class SlashCommandHandler:
             "/help": self._help,
             "/plan": self._plan,
             "/models": self._models,
+            "/provider": self._provider,
             "/yolo": self._yolo,
             "/clear": self._clear,
             "/session": self._session,
+            "/sessions": self._sessions,
+            "/save": self._save,
+            "/load": self._load,
             "/tokens": self._tokens,
             "/compact": self._compact,
-            "/provider": self._provider,
+            "/refresh": self._refresh,
         }
 
         handler = handlers.get(cmd)
@@ -228,12 +233,16 @@ class SlashCommandHandler:
 | `/help` | Show this help |
 | `/plan <scope>` | Create a development plan |
 | `/models` | List available models |
-| `/provider <id>` | Switch provider (ollama/openai/anthropic/gemini/deepseek) |
+| `/provider <id>` | Switch provider |
 | `/yolo` | Toggle yolo mode (bypass permissions) |
 | `/clear` | Clear chat history |
 | `/session` | Show current session info |
+| `/sessions` | List recent sessions |
+| `/save` | Save current session |
+| `/load <id>` | Load a session by ID |
 | `/tokens` | Show token usage |
-| `/compact` | Force context compaction |"""
+| `/compact` | Force context compaction |
+| `/refresh` | Refresh file tree |"""
         self.app.chat_pane.add_assistant_message(help_text)
 
     async def _plan(self, args: str) -> None:
@@ -381,6 +390,101 @@ class SlashCommandHandler:
         self.app.agent.messages = self.app.agent.context.compact_messages(self.app.agent.messages)
         self.app.chat_pane.add_status("Context compacted.", style="green")
 
+    async def _sessions(self, args: str) -> None:
+        """List recent sessions."""
+        try:
+            from oktigent.storage.db import Storage
+            storage = Storage()
+            await storage.connect()
+            sessions = await storage.list_sessions(limit=10)
+            await storage.close()
+
+            if not sessions:
+                self.app.chat_pane.add_assistant_message("No saved sessions yet.")
+                return
+
+            lines = ["## Recent Sessions\n"]
+            for s in sessions:
+                sid = s["id"]
+                name = s.get("name", "Unnamed")
+                model = s.get("model", "?")
+                updated = s.get("updated_at", "?")[:16]
+                lines.append(f"- `{sid}` — {name} ({model}) — {updated}")
+            lines.append("\nUse `/load <id>` to restore a session.")
+            self.app.chat_pane.add_assistant_message("\n".join(lines))
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Error: {e}", style="bold red")
+
+    async def _save(self, args: str) -> None:
+        """Save current session."""
+        try:
+            from oktigent.storage.db import Storage
+            storage = Storage()
+            await storage.connect()
+
+            if not self.app.agent.session_id:
+                self.app.agent.session_id = await storage.create_session(
+                    workspace=str(Path.cwd()),
+                    model=self.app.config.default_model,
+                )
+
+            # Save all messages
+            for msg in self.app.agent.messages:
+                await storage.add_message(self.app.agent.session_id, msg)
+
+            await storage.close()
+            self.app.chat_pane.add_status(
+                f"Session saved: {self.app.agent.session_id}", style="green"
+            )
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Save error: {e}", style="bold red")
+
+    async def _load(self, args: str) -> None:
+        """Load a session by ID."""
+        if not args:
+            self.app.chat_pane.add_status("Usage: /load <session-id>", style="bold red")
+            return
+
+        session_id = args.strip()
+        try:
+            from oktigent.storage.db import Storage
+            storage = Storage()
+            await storage.connect()
+            session = await storage.get_session(session_id)
+            if not session:
+                self.app.chat_pane.add_status(f"Session not found: {session_id}", style="bold red")
+                await storage.close()
+                return
+
+            messages = await storage.get_messages(session_id)
+            await storage.close()
+
+            # Restore session
+            self.app.agent.session_id = session_id
+            self.app.agent.messages = messages
+
+            # Refresh chat display
+            self.app.chat_pane.remove_children()
+            for msg in messages:
+                if msg.role.value == "user":
+                    self.app.chat_pane.add_user_message(msg.content)
+                elif msg.role.value == "assistant" and msg.content:
+                    self.app.chat_pane.add_assistant_message(msg.content)
+
+            self.app.chat_pane.add_status(
+                f"Session loaded: {session_id} ({len(messages)} messages)", style="green"
+            )
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Load error: {e}", style="bold red")
+
+    async def _refresh(self, args: str) -> None:
+        """Refresh file tree."""
+        try:
+            self.app.file_tree.refresh_tree()
+            self.app.chat_pane.add_status("File tree refreshed.", style="green")
+        except Exception as e:
+            self.app.chat_pane.add_status(f"Refresh error: {e}", style="bold red")
+
 
 def _summarize_args(args: dict) -> str:
     """Create a brief summary of tool arguments."""
@@ -496,10 +600,11 @@ class OktigentApp(App):
         yield Header()
 
         with Horizontal():
-            # Sidebar
+            # Sidebar - file tree
             with Vertical(id="sidebar"):
                 yield Label("Files")
-                yield Static("File tree coming soon.", id="file-tree")
+                self.file_tree = FileTree(id="file-tree")
+                yield self.file_tree
 
             # Main chat area
             with Vertical(id="main"):
@@ -597,6 +702,14 @@ class OktigentApp(App):
 
                 elif event.type in ("tool_start", "tool_end", "tool_denied"):
                     self.chat_pane.add_tool_event(event)
+                    # Refresh file tree after file modifications
+                    if event.type == "tool_end" and event.tool in (
+                        "write_file", "edit_file", "multi_edit", "run_command"
+                    ):
+                        try:
+                            self.file_tree.refresh_tree()
+                        except Exception:
+                            pass
 
                 elif event.type == "permission_ask":
                     # Show permission request and wait for user input
