@@ -23,7 +23,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Label, Static
+from textual.widgets import Footer, Header, Input, Label, OptionList, Static
+from textual.widgets.option_list import Option
 
 from oktigent.agent.loop import AgentLoop, StreamEvent
 from oktigent.config import OktigentConfig
@@ -31,6 +32,28 @@ from oktigent.tui.streaming import StreamingMarkdown
 from oktigent.tui.widgets import FileTree
 
 logger = logging.getLogger(__name__)
+
+SLASH_COMMANDS = [
+    ("/help", "Show help & command list"),
+    ("/setup", "Open onboarding & setup wizard"),
+    ("/theme", "Switch color theme (synthwave, matrix, cyberpunk, nord)"),
+    ("/plan", "Create a development plan for a goal"),
+    ("/approve", "Approve and execute plan tasks"),
+    ("/models", "List available models for current provider"),
+    ("/provider", "Switch active model provider"),
+    ("/yolo", "Toggle auto-execution without permission prompts"),
+    ("/git", "Git operations (status, diff, log, commit, push, branch)"),
+    ("/clear", "Clear current chat history"),
+    ("/session", "Show active session details"),
+    ("/sessions", "List recent saved sessions"),
+    ("/save", "Save current session"),
+    ("/load", "Load a session by ID"),
+    ("/tokens", "Show token usage breakdown"),
+    ("/compact", "Force compact older context messages"),
+    ("/refresh", "Refresh workspace file tree"),
+    ("/mcp", "Manage MCP servers and tools"),
+    ("/plugin", "Manage plugins and templates"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -822,6 +845,13 @@ class OktigentApp(App):
         padding: 1;
         overflow-y: auto;
     }
+    #command-suggestions {
+        display: none;
+        max-height: 8;
+        background: $surface;
+        border: solid $primary;
+        margin: 0 1;
+    }
     #input-bar {
         dock: bottom;
         height: 3;
@@ -900,9 +930,12 @@ class OktigentApp(App):
                 self.chat_pane = ChatPane(id="chat")
                 yield self.chat_pane
 
+                self.suggestions_box = OptionList(id="command-suggestions")
+                yield self.suggestions_box
+
                 # Input bar
                 self.input_bar = Input(
-                    placeholder="Type a message or /help...",
+                    placeholder="Type a message or / for commands...",
                     id="input-bar",
                 )
                 yield self.input_bar
@@ -1007,9 +1040,38 @@ class OktigentApp(App):
         """Show permission dialog in the TUI."""
         self.chat_pane.add_permission_request(tool, arguments)
 
+    @on(Input.Changed, "#input-bar")
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Filter and display slash command suggestions when typing /."""
+        val = event.value
+        if val.startswith("/"):
+            query = val.strip().lower()
+            matching = [
+                (cmd, desc) for cmd, desc in SLASH_COMMANDS
+                if cmd.startswith(query) or query in cmd
+            ]
+            if matching:
+                self.suggestions_box.clear_options()
+                for cmd, desc in matching:
+                    self.suggestions_box.add_option(Option(f"[bold cyan]{cmd:<10}[/] [dim]— {desc}[/]", id=cmd))
+                self.suggestions_box.display = True
+                return
+        self.suggestions_box.display = False
+
+    @on(OptionList.OptionSelected, "#command-suggestions")
+    def on_suggestion_selected(self, event: OptionList.OptionSelected) -> None:
+        """Insert selected slash command into input bar."""
+        cmd_id = event.option_id
+        if cmd_id:
+            self.input_bar.value = f"{cmd_id} "
+            self.suggestions_box.display = False
+            self.input_bar.focus()
+            self.input_bar.cursor_position = len(self.input_bar.value)
+
     @on(Input.Submitted, "#input-bar")
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle user input."""
+        self.suggestions_box.display = False
         text = event.value.strip()
         if not text:
             return
