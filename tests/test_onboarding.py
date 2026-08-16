@@ -3,6 +3,7 @@
 import os
 import tomllib
 from oktigent.config import OktigentConfig, ProviderConfig, ProviderID
+from oktigent.models.factory import create_provider
 from oktigent.tui.onboarding import check_needs_onboarding, save_config_toml, OnboardingScreen
 
 
@@ -56,3 +57,12 @@ def test_onboarding_screen_instantiation():
     screen = OnboardingScreen(config)
     assert screen.config == config
     assert screen._selected_provider == "ollama"
+
+
+def test_create_provider_openrouter_with_config_key():
+    config = OktigentConfig()
+    config.default_provider = ProviderID.OPENROUTER
+    config.providers["openrouter"] = ProviderConfig(api_key="sk-or-test-key-123")
+    provider = create_provider(config)
+    assert provider.provider_name == "openrouter"
+    assert provider.api_key == "sk-or-test-key-123"

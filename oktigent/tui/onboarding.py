@@ -204,6 +204,8 @@ class OnboardingScreen(ModalScreen[OktigentConfig | None]):
                     yield RadioButton("Safe Mode (Ask permission before file edits / commands)", value=not self.config.permissions.yolo, id="rad-safe")
                     yield RadioButton("Yolo Mode (Auto-execute all tool calls without prompting)", value=self.config.permissions.yolo, id="rad-yolo")
 
+                yield Static("", id="onboard-error-msg")
+
             with Horizontal(id="button-bar"):
                 yield Button("Skip / Cancel", variant="default", id="btn-cancel")
                 yield Button("Save & Start Coding", variant="primary", id="btn-save")
@@ -214,6 +216,12 @@ class OnboardingScreen(ModalScreen[OktigentConfig | None]):
         rad_id = event.pressed.id or ""
         provider = rad_id.replace("rad-", "")
         self._selected_provider = provider
+
+        # Clear any previous validation error
+        try:
+            self.query_one("#onboard-error-msg", Static).update("")
+        except Exception:
+            pass
 
         # Update model input placeholder and default value
         model_input = self.query_one("#input-model", Input)
@@ -227,9 +235,9 @@ class OnboardingScreen(ModalScreen[OktigentConfig | None]):
             key_input.password = False
             key_input.value = "http://localhost:11434"
         else:
-            key_input.placeholder = f"API Key for {provider.capitalize()} (or env var {_ENV_KEY_MAP.get(provider, '')})"
+            key_input.placeholder = f"API Key for {provider.capitalize()} (required)"
             key_input.password = True
-            env_val = os.environ.get(_ENV_KEY_MAP.get(provider, ""), "")
+            env_val = os.environ.get(_ENV_KEY_MAP.get(provider, ""), "") or os.environ.get(f"OKTIGENT_{_ENV_KEY_MAP.get(provider, '')}", "")
             key_input.value = env_val
 
     @on(Button.Pressed, "#btn-cancel")
@@ -238,10 +246,23 @@ class OnboardingScreen(ModalScreen[OktigentConfig | None]):
 
     @on(Button.Pressed, "#btn-save")
     def on_save(self) -> None:
-        """Apply and persist selected configurations."""
+        """Apply and persist selected configurations with validation."""
         model_val = self.query_one("#input-model", Input).value.strip()
         key_val = self.query_one("#input-api-key", Input).value.strip()
         is_yolo = self.query_one("#rad-yolo", RadioButton).value
+
+        # Validate required API key for cloud providers
+        if self._selected_provider != "ollama" and not key_val:
+            env_name = _ENV_KEY_MAP.get(self._selected_provider, "API_KEY")
+            env_val = os.environ.get(env_name, "") or os.environ.get(f"OKTIGENT_{env_name}", "")
+            if not env_val:
+                error_static = self.query_one("#onboard-error-msg", Static)
+                error_static.update(
+                    f"[bold red]⚠️ API Key is required for {self._selected_provider.capitalize()}![/bold red]\n"
+                    f"[yellow]Please enter your key above or set the {env_name} environment variable.[/yellow]"
+                )
+                self.query_one("#input-api-key", Input).focus()
+                return
 
         # Build updated config
         provider_id = ProviderID(self._selected_provider)
@@ -256,9 +277,15 @@ class OnboardingScreen(ModalScreen[OktigentConfig | None]):
         if self._selected_provider == "ollama":
             if key_val and key_val.startswith("http"):
                 p_cfg.base_url = key_val
+            elif not p_cfg.base_url:
+                p_cfg.base_url = "http://localhost:11434"
         else:
             if key_val:
                 p_cfg.api_key = key_val
+            elif not p_cfg.api_key:
+                env_name = _ENV_KEY_MAP.get(self._selected_provider, "")
+                p_cfg.api_key = os.environ.get(env_name, "") or os.environ.get(f"OKTIGENT_{env_name}", "")
+
         p_cfg.model = self.config.default_model
 
         # Save to disk

@@ -6,6 +6,7 @@ Supports: Ollama, OpenAI, DeepSeek, OpenRouter, xAI, Anthropic, Gemini.
 from __future__ import annotations
 
 import logging
+import os
 
 from oktigent.config import OktigentConfig
 from oktigent.models.provider import BaseProvider
@@ -35,49 +36,49 @@ def create_provider(
     if provider_id == "ollama":
         from oktigent.models.ollama import OllamaProvider
         base_url = provider_config.base_url if provider_config else None
-        return OllamaProvider(base_url=base_url or "http://localhost:11434")
+        return OllamaProvider(base_url=base_url or os.environ.get("OLLAMA_HOST") or "http://localhost:11434")
 
     elif provider_id == "openai":
         from oktigent.models.openai_compat import OpenAICompatProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("OPENAI_API_KEY") or os.environ.get("OKTIGENT_OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OpenAI API key required. Set OKTIGENT_OPENAI_API_KEY or OPENAI_API_KEY env var.")
+            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or OKTIGENT_OPENAI_API_KEY env var.")
         return OpenAICompatProvider(api_key=api_key, provider_name="openai")
 
     elif provider_id == "deepseek":
         from oktigent.models.openai_compat import OpenAICompatProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OKTIGENT_DEEPSEEK_API_KEY")
         if not api_key:
-            raise ValueError("DeepSeek API key required. Set OKTIGENT_DEEPSEEK_API_KEY env var.")
+            raise ValueError("DeepSeek API key required. Set DEEPSEEK_API_KEY or OKTIGENT_DEEPSEEK_API_KEY env var.")
         return OpenAICompatProvider(api_key=api_key, provider_name="deepseek")
 
     elif provider_id == "openrouter":
         from oktigent.models.openai_compat import OpenAICompatProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OKTIGENT_OPENROUTER_API_KEY")
         if not api_key:
-            raise ValueError("OpenRouter API key required. Set OKTIGENT_OPENROUTER_API_KEY env var.")
+            raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY or OKTIGENT_OPENROUTER_API_KEY env var.")
         return OpenAICompatProvider(api_key=api_key, provider_name="openrouter")
 
     elif provider_id == "xai":
         from oktigent.models.openai_compat import OpenAICompatProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("XAI_API_KEY") or os.environ.get("OKTIGENT_XAI_API_KEY")
         if not api_key:
-            raise ValueError("xAI API key required. Set OKTIGENT_XAI_API_KEY env var.")
+            raise ValueError("xAI API key required. Set XAI_API_KEY or OKTIGENT_XAI_API_KEY env var.")
         return OpenAICompatProvider(api_key=api_key, provider_name="xai")
 
     elif provider_id == "anthropic":
         from oktigent.models.anthropic import AnthropicProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OKTIGENT_ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("Anthropic API key required. Set OKTIGENT_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY env var.")
+            raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY or OKTIGENT_ANTHROPIC_API_KEY env var.")
         base_url = provider_config.base_url if provider_config else None
         return AnthropicProvider(api_key=api_key, base_url=base_url or "https://api.anthropic.com")
 
     elif provider_id == "gemini":
         from oktigent.models.gemini import GeminiProvider
-        api_key = provider_config.api_key if provider_config else None
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("OKTIGENT_GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("Gemini API key required. Set OKTIGENT_GEMINI_API_KEY or GOOGLE_API_KEY env var.")
+            raise ValueError("Gemini API key required. Set GOOGLE_API_KEY, GEMINI_API_KEY, or OKTIGENT_GEMINI_API_KEY env var.")
         return GeminiProvider(api_key=api_key)
 
     else:
