@@ -35,6 +35,7 @@ class SlashCommandHandler:
             "/budget": self._budget,           # type: ignore[attr-defined]
             "/prompt": self._prompt,           # type: ignore[attr-defined]
             "/profile": self._profile,         # type: ignore[attr-defined]
+            "/recall": self._recall,           # type: ignore[attr-defined]
             "/plans": self._plans,             # type: ignore[attr-defined]
             "/plan-resume": self._plan_resume, # type: ignore[attr-defined]
             "/approve": self._approve,
@@ -808,3 +809,25 @@ async def _profile_wrapper(self, args: str) -> None:
 
 
 SlashCommandHandler._profile = _profile_wrapper              # type: ignore[attr-defined]
+
+
+async def _recall_impl(handler, args: str) -> None:
+    """/recall <query> — search across all saved sessions."""
+    query = args.strip()
+    if not query:
+        handler.app.chat_pane.add_status(
+            "Usage: /recall <query>  — search past sessions", style="dim"
+        )
+        return
+    from okti.context.recall import recall_conversations
+    handler.app.tool_dock.update_status("Recalling...")
+    result = await recall_conversations(query)
+    handler.app.chat_pane.add_assistant_message(result)
+    handler.app.tool_dock.update_status("Ready")
+
+
+async def _recall_wrapper(self, args: str) -> None:
+    await _recall_impl(self, args)
+
+
+SlashCommandHandler._recall = _recall_wrapper                # type: ignore[attr-defined]

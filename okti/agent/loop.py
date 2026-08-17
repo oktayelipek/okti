@@ -85,6 +85,7 @@ class AgentLoop:
     def _build_default_registry(self) -> ToolRegistry:
         """Build the default tool registry with all built-in tools."""
         from okti.context.profile import register_profile_tools
+        from okti.context.recall import register_recall_tools
         from okti.tools.bash import register_bash_tools
         from okti.tools.code_index import register_code_index_tools
         from okti.tools.files import register_file_tools
@@ -99,6 +100,7 @@ class AgentLoop:
         register_git_tools(registry)
         register_code_index_tools(registry)
         register_profile_tools(registry)
+        register_recall_tools(registry)
         self._register_swarm_tools(registry)
 
         # Load user plugins (disabled by default; requires trust-pinned hashes)

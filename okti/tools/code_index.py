@@ -202,12 +202,13 @@ class CodeIndex:
 
     def _tokenize(self, text: str) -> list[str]:
         # Split on non-word AND on camelCase / snake_case boundaries.
-        base = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text.lower())
+        # Case-preserved base so camelCase detection actually works
+        # (`parseConfig` → `parse`, `config`), then lowercased once.
+        base = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text)
         expanded: list[str] = []
         for tok in base:
-            expanded.append(tok)
-            expanded.extend(t for t in re.split(r"_+", tok) if t and t != tok)
-            # camelCase → tokens
+            expanded.append(tok.lower())
+            expanded.extend(t.lower() for t in re.split(r"_+", tok) if t and t != tok)
             camels = re.findall(r"[a-z]+|[A-Z][a-z]*", tok)
             if len(camels) > 1:
                 expanded.extend(c.lower() for c in camels)
