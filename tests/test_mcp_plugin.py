@@ -143,13 +143,14 @@ TOOLS = [
 
 
 def test_create_plugin_template(tmp_path):
-    """Test creating a plugin template."""
+    """Template ships the v1 public API — @tool decorator, no raw ToolDef."""
     template_path = create_plugin_template(tmp_path)
     assert template_path.exists()
     assert template_path.name == "example_plugin.py"
     content = template_path.read_text()
     assert "TOOLS" in content
-    assert "ToolDef" in content
+    assert "@tool" in content
+    assert "list_registered" in content
 
 
 def test_plugin_broken_syntax(tmp_path):

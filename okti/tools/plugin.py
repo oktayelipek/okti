@@ -225,7 +225,7 @@ def load_all_plugins(
 
 
 # Plugin template for users
-PLUGIN_TEMPLATE = '''"""Custom tool plugin for okti.
+PLUGIN_TEMPLATE = '''"""Custom tool plugin for okti (public API v1).
 
 Place this file in ~/.config/okti/plugins/ or .okti/plugins/
 
@@ -235,32 +235,23 @@ and add the hash to config.plugins.trusted_hashes. Enable loading with
 config.plugins.enabled = true.
 """
 
-from okti.tools.registry import ToolDef
+from okti import list_registered, tool
 
 
-async def my_tool_handler(name: str = "world") -> str:
-    """Your tool handler function."""
+@tool(description="Say hello.", risk_level="low")
+async def hello(name: str = "world") -> str:
+    """Return a friendly greeting."""
     return f"Hello, {name}!"
 
 
-# Register your tools here
-TOOLS = [
-    ToolDef(
-        name="my_tool",
-        description="A custom tool that says hello",
-        parameters={
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Name to greet",
-                },
-            },
-        },
-        handler=my_tool_handler,
-        risk_level="low",
-    ),
-]
+@tool(description="Add two integers.")
+async def add(a: int, b: int) -> str:
+    """Both arguments are required (no defaults)."""
+    return str(a + b)
+
+
+# Loader convention — expose the module-level registry.
+TOOLS = list_registered()
 '''
 
 
