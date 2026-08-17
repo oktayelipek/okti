@@ -104,7 +104,15 @@ skip_covered = false
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "build", "dist"]
-skips = ["B101"]  # assert_used — legitimate in tests & guard clauses
+# Rationale for each suppression:
+#   B101 — asserts are legitimate in guard clauses and mypy-narrowing
+#   B311 — random.uniform is only used for retry jitter, not for crypto
+#   B404 — subprocess import is intentional (bash/git tools by design)
+#   B603 — subprocess call without shell=True is the SAFER form; bandit
+#          still warns because the arg list is dynamic
+#   B607 — partial paths (`git`, `npx`) rely on user's PATH by design;
+#          this is a developer-focused CLI, not a system daemon
+skips = ["B101", "B311", "B404", "B603", "B607"]
 
 [tool.mypy]
 python_version = "3.11"

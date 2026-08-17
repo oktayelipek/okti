@@ -104,22 +104,24 @@ class FileTree(Static):
 
     def refresh_tree(self) -> None:
         """Refresh the file tree."""
+        from textual.css.query import NoMatches
         try:
             tree = self.query_one("#file-tree-view", Tree)
-            tree.root.remove_children()
-            tree.root.label = str(self.workspace.name)
-            self._build_tree(tree.root, self.workspace)
-        except Exception:
-            pass
+        except NoMatches:
+            return
+        tree.root.remove_children()
+        tree.root.label = str(self.workspace.name)
+        self._build_tree(tree.root, self.workspace)
 
     def get_selected_path(self) -> str | None:
         """Get the currently selected file path."""
+        from textual.css.query import NoMatches
         try:
             tree = self.query_one("#file-tree-view", Tree)
-            if tree.cursor_node and tree.cursor_node.data:
-                return tree.cursor_node.data
-        except Exception:
-            pass
+        except NoMatches:
+            return None
+        if tree.cursor_node and tree.cursor_node.data:
+            return tree.cursor_node.data
         return None
 
 

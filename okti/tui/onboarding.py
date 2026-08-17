@@ -59,8 +59,8 @@ def check_needs_onboarding(config_path: Path | None = None) -> bool:
         return True
 
     # If config file exists, check if the configured provider requires an API key that is missing
+    import tomllib
     try:
-        import tomllib
         with open(cfg_file, "rb") as f:
             data = tomllib.load(f)
         provider = data.get("default_provider", "ollama")
@@ -71,8 +71,8 @@ def check_needs_onboarding(config_path: Path | None = None) -> bool:
             env_key = os.environ.get(env_var, "") or os.environ.get(f"OKTI_{env_var}", "")
             if not key and not env_key:
                 return True  # Configured provider has no key -> needs onboarding
-    except Exception:
-        pass
+    except (OSError, tomllib.TOMLDecodeError, KeyError, TypeError) as e:
+        logger.debug("Config parse skipped, defaulting to no onboarding: %s", e)
 
     return False
 
@@ -198,10 +198,11 @@ class OnboardingScreen(ModalScreen[OktiConfig | None]):
         self._selected_provider = provider
 
         # Clear any previous validation error
+        from textual.css.query import NoMatches
         try:
             self.query_one("#onboard-error-msg", Static).update("")
-        except Exception:
-            pass
+        except NoMatches:
+            pass  # error widget not mounted yet — fine
 
         # Update model input placeholder and default value
         model_input = self.query_one("#input-model", Input)

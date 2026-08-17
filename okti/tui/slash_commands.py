@@ -172,8 +172,8 @@ class SlashCommandHandler:
             try:
                 from okti.tools.files import list_dir
                 codebase_context = await list_dir(".")
-            except Exception:
-                pass
+            except (OSError, ValueError) as e:
+                logger.debug("Codebase snapshot for plan skipped: %s", e)
 
             prompt = build_plan_prompt(args, codebase_context)
             plan_messages = [

@@ -98,11 +98,12 @@ class ChatPane(VerticalScroll):
 
     def hide_thinking(self) -> None:
         """Remove any active thinking indicator."""
+        from textual.css.query import NoMatches
         try:
             for ind in self.query("#live-thinking-indicator"):
                 ind.remove()
-        except Exception:
-            pass
+        except NoMatches:
+            return
 
     async def start_assistant_message(self) -> StreamingMarkdown:
         """Create a new streaming markdown widget for the assistant response."""
@@ -240,8 +241,8 @@ class ToolDock(Static):
             cwd = Path.cwd()
             self.short_cwd = get_short_cwd(cwd)
             self.git_info = get_git_info(cwd)
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("Failed to refresh env info: %s", e)
 
     def on_mount(self) -> None:
         self.set_interval(0.1, self._spin)
