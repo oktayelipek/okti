@@ -493,7 +493,7 @@ class OktiApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
-        Binding("ctrl+c", "quit", "Quit"),
+        Binding("ctrl+c", "cancel_or_quit", "Cancel/Quit"),
         Binding("ctrl+l", "clear_chat", "Clear"),
         Binding("ctrl+y", "toggle_yolo", "Yolo"),
     ]
@@ -519,6 +519,7 @@ class OktiApp(App):
         self._permission_result: bool = False
         self._resume_session_id = resume_session_id  # Session to resume on mount
         self._force_setup = force_setup
+        self._current_worker: Any = None  # Textual Worker running _run_agent
 
     def compose(self) -> ComposeResult:
         # Main expansive chat area
@@ -688,9 +689,9 @@ class OktiApp(App):
         # Show user message
         self.chat_pane.add_user_message(text)
 
-        # Run agent
+        # Run agent (track the worker so Ctrl+C can cancel it)
         self.tool_dock.update_status("Thinking...")
-        self._run_agent(text)
+        self._current_worker = self._run_agent(text)
 
     @work(exclusive=True, exit_on_error=False)
     async def _run_agent(self, user_input: str) -> None:
@@ -782,11 +783,34 @@ class OktiApp(App):
                 [type(c).__name__ for c in self.chat_pane.children])
             self.tool_dock.set_state("idle")
 
+        except asyncio.CancelledError:
+            logger.info("_run_agent cancelled by user")
+            self.chat_pane.hide_thinking()
+            self.chat_pane.add_status(
+                "✗ Cancelled by user (Ctrl+C). Press Ctrl+Q or Ctrl+C again to quit.",
+                style="bold yellow",
+            )
+            self.tool_dock.set_state("idle")
+            # If a permission dialog is waiting, release it as a denial so
+            # the agent loop stops cleanly.
+            if self._permission_event and not self._permission_event.is_set():
+                self._permission_result = False
+                self._permission_event.set()
+            raise
         except Exception as e:
             logger.error("_run_agent exception: %s", e, exc_info=True)
             self.chat_pane.hide_thinking()
             self.chat_pane.add_status(f"Error: {e}", style="bold red")
             self.tool_dock.set_state("error")
+
+    def action_cancel_or_quit(self) -> None:
+        """Ctrl+C: cancel a running agent turn if any, otherwise quit."""
+        worker = self._current_worker
+        if worker is not None and not worker.is_finished:
+            worker.cancel()
+            self._current_worker = None
+            return
+        self.exit()
 
     def action_clear_chat(self) -> None:
         self.chat_pane.remove_children()
