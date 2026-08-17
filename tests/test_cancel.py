@@ -45,7 +45,8 @@ async def test_cancel_or_quit_exits_when_idle(monkeypatch):
         app.action_cancel_or_quit()
         # The app is now closing; wait briefly and confirm.
         await pilot.pause()
-        assert app._return_code is not None or app._exit is True or True  # exit signalled
+        # The action ran without raising — actual close happens after run_test exits.
+        assert app._current_worker is None
 
 
 @pytest.mark.asyncio

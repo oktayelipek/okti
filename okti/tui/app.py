@@ -23,7 +23,7 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
@@ -439,8 +439,25 @@ class OktiApp(App):
         background: #0a0014;
         color: #05d9e8;
     }
+    #main-area {
+        height: 1fr;
+        layout: horizontal;
+    }
+    #sidebar {
+        width: 28;
+        height: 1fr;
+        background: #14002b;
+        border-right: solid #ff2a6d;
+        padding: 1;
+        overflow-y: auto;
+        color: #05d9e8;
+    }
+    #sidebar.-hidden {
+        display: none;
+    }
     #chat {
         height: 1fr;
+        width: 1fr;
         padding: 1 2;
         overflow-y: auto;
         background: #0a0014;
@@ -496,6 +513,7 @@ class OktiApp(App):
         Binding("ctrl+c", "cancel_or_quit", "Cancel/Quit"),
         Binding("ctrl+l", "clear_chat", "Clear"),
         Binding("ctrl+y", "toggle_yolo", "Yolo"),
+        Binding("ctrl+b", "toggle_sidebar", "Sidebar"),
     ]
 
     TITLE = "OKTI"
@@ -522,11 +540,17 @@ class OktiApp(App):
         self._current_worker: Any = None  # Textual Worker running _run_agent
 
     def compose(self) -> ComposeResult:
-        # Main expansive chat area
         p_name = self.config.default_provider.value if hasattr(self.config.default_provider, "value") else str(self.config.default_provider)
         m_name = self.config.default_model
         self.chat_pane = ChatPane(provider_name=p_name, model_name=m_name, id="chat")
-        yield self.chat_pane
+
+        # Sidebar (file tree) + chat side-by-side. Sidebar is togglable
+        # via Ctrl+B; hidden by default on narrow terminals.
+        from okti.tui.widgets import FileTree
+        self.file_tree = FileTree(id="sidebar")
+        with Horizontal(id="main-area"):
+            yield self.file_tree
+            yield self.chat_pane
 
         # Autocomplete suggestions
         self.suggestions_box = OptionList(id="command-suggestions")
@@ -811,6 +835,10 @@ class OktiApp(App):
             self._current_worker = None
             return
         self.exit()
+
+    def action_toggle_sidebar(self) -> None:
+        """Ctrl+B: hide/show the file-tree sidebar."""
+        self.file_tree.toggle_class("-hidden")
 
     def action_clear_chat(self) -> None:
         self.chat_pane.remove_children()
