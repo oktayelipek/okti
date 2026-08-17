@@ -51,6 +51,10 @@ class ContextManager:
             total += self._estimate_text_tokens(msg.content)
             for tc in msg.tool_calls:
                 total += self._estimate_text_tokens(tc.arguments_json())
+                total += self._estimate_text_tokens(tc.name)
+                total += self._estimate_text_tokens(tc.id)
+            if msg.tool_call_id:
+                total += self._estimate_text_tokens(msg.tool_call_id)
         return total
 
     @staticmethod

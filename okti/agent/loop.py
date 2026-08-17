@@ -40,6 +40,69 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_TURNS = 50
 
 
+def _parse_streamed_tool_args(raw: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Parse a streamed JSON tool-arguments buffer, repairing common truncations.
+
+    Providers sometimes emit incomplete JSON on cutoff (missing closing brackets,
+    unterminated strings, trailing commas, dangling keys). We try strict parse
+    first, then iteratively strip trailing garbage and close open containers
+    until we get a valid JSON object.
+
+    Returns (parsed_dict, None) on success or (None, reason).
+    """
+    import json as _json
+
+    if not raw:
+        return {}, None
+    raw = raw.strip()
+    if not raw:
+        return {}, None
+    try:
+        val = _json.loads(raw)
+        return (val, None) if isinstance(val, dict) else (None, "not a JSON object")
+    except (_json.JSONDecodeError, ValueError):
+        pass
+
+    def close(s: str) -> str:
+        stack: list[str] = []
+        in_string = False
+        escaped = False
+        for ch in s:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch in "{[":
+                stack.append("}" if ch == "{" else "]")
+            elif ch in "}]" and stack and stack[-1] == ch:
+                stack.pop()
+        return s + ('"' if in_string else "") + "".join(reversed(stack))
+
+    s = raw
+    # Cap iteration cost at O(n) with a safety upper bound.
+    for _ in range(min(len(raw), 512)):
+        while s and s[-1] in ",: \t\n\r":
+            s = s[:-1]
+        if not s:
+            break
+        try:
+            val = _json.loads(close(s))
+        except (_json.JSONDecodeError, ValueError):
+            s = s[:-1]
+            continue
+        if isinstance(val, dict):
+            return val, None
+        return None, "not a JSON object"
+
+    return None, "unrecoverable partial JSON"
+
+
 class AgentLoop:
     """The core agent execution loop."""
 
@@ -337,20 +400,18 @@ class AgentLoop:
                     turn_usage = turn_usage + chunk.token_usage
 
             # Finalize tool call arguments — parse accumulated raw JSON
-            import json as _json
             for tc in tool_calls:
                 raw = getattr(tc, "_raw_args", "")
                 if raw and not tc.arguments:
-                    try:
-                        tc.arguments = _json.loads(raw)
-                    except (_json.JSONDecodeError, ValueError):
-                        # Try to fix trailing commas and incomplete JSON
-                        fixed = raw.rstrip().rstrip(",")
-                        try:
-                            tc.arguments = _json.loads(fixed)
-                        except (_json.JSONDecodeError, ValueError):
-                            logger.warning("Failed to parse tool call args: %s", raw[:100])
-                            tc.arguments = {"_raw": raw}
+                    parsed, err = _parse_streamed_tool_args(raw)
+                    if parsed is not None:
+                        tc.arguments = parsed
+                    else:
+                        logger.warning(
+                            "Failed to parse tool call args for %s: %s (%s)",
+                            tc.name, raw[:120], err,
+                        )
+                        tc.arguments = {"_raw": raw, "_parse_error": err}
                 # Reset the streaming JSON buffer for future turns
                 tc._raw_args = ""
 
