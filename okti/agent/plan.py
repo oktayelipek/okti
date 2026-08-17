@@ -133,6 +133,31 @@ class Plan:
             f"~{cost_str} on {model_name}"
         )
 
+    def budget_warning(
+        self,
+        model_name: str,
+        cap_usd: float | None,
+        already_spent_usd: float = 0.0,
+    ) -> str | None:
+        """Return a warning if executing the remaining plan would breach the cap.
+
+        Returns None when there is no cap, or when the projected total
+        (already_spent + estimated remaining) fits under the cap. The
+        message names both the projected total and the cap so the user
+        can decide whether to raise the cap or trim the plan.
+        """
+        if cap_usd is None or cap_usd <= 0:
+            return None
+        projected = already_spent_usd + self.estimated_cost_usd(model_name)
+        if projected <= cap_usd:
+            return None
+        overshoot = projected - cap_usd
+        return (
+            f"⚠️  Budget breach: projected ~${projected:.4f} would exceed "
+            f"session cap ${cap_usd:.2f} by ${overshoot:.4f}. "
+            f"Raise config.budget.session_usd_cap or trim the plan before /approve."
+        )
+
 
 def build_plan_prompt(scope: str, codebase_context: str = "") -> str:
     """Build the system prompt for plan generation."""

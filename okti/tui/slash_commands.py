@@ -156,6 +156,9 @@ class SlashCommandHandler:
             f"Estimate for remaining plan: {plan.cost_summary(self.app.config.default_model)}",
             style="dim cyan",
         )
+        _warn = _plan_budget_line(self.app, plan)
+        if _warn:
+            self.app.chat_pane.add_status(_warn, style="bold yellow")
         self.app.chat_pane.add_status(f"Executing task [{task.id}]: {task.title}...", style="bold cyan")
         prompt = build_task_prompt(task, plan.summary)
         self.app.chat_pane.add_user_message(f"Execute plan task: {task.title}")
@@ -212,6 +215,9 @@ class SlashCommandHandler:
                         lines.append(f"  Files: {', '.join(task.files_involved)}")
                 # Cost preview so the user knows the ballpark before approving.
                 lines.append(f"\n**Estimate**: {plan.cost_summary(self.app.config.default_model)}")
+                _warn = _plan_budget_line(self.app, plan)
+                if _warn:
+                    lines.append(f"\n{_warn}")
                 lines.append("\nType `/approve` to approve and execute, or edit the plan.")
 
                 self.app.chat_pane.add_assistant_message("\n".join(lines))
@@ -617,6 +623,24 @@ Plugins are Python files in `~/.config/okti/plugins/` or `.okti/plugins/`.""")
 # Plan persistence helpers
 # ---------------------------------------------------------------------------
 
+def _plan_budget_line(app, plan) -> str | None:
+    """Return a budget-breach warning for the plan, if any.
+
+    Pulls the current session spend from ``app.agent.total_usage`` and
+    the cap from ``app.config.budget.session_usd_cap`` so the caller
+    can decide whether to render a warning next to the cost estimate.
+    """
+    spent = 0.0
+    agent = getattr(app, "agent", None)
+    if agent is not None and getattr(agent, "total_usage", None) is not None:
+        spent = agent.total_usage.cost_usd
+    return plan.budget_warning(
+        app.config.default_model,
+        app.config.budget.session_usd_cap,
+        spent,
+    )
+
+
 async def _persist_plan(agent, plan) -> None:
     """Save the current plan snapshot to the session's plans table.
 
@@ -689,9 +713,14 @@ async def _plan_resume_impl(handler) -> None:
         f"\n{plan.summary}\n",
         f"Status: **{n_total - n_pending}/{n_total}** tasks complete, {n_pending} pending.",
         f"Estimate for remaining work: {plan.cost_summary(handler.app.config.default_model)}",
+    ]
+    _warn = _plan_budget_line(handler.app, plan)
+    if _warn:
+        lines.append(_warn)
+    lines.extend([
         "",
         "Type `/approve` to continue with the next pending task.",
-    ]
+    ])
     handler.app.chat_pane.add_assistant_message("\n".join(lines))
 
 
