@@ -66,6 +66,8 @@ def _screenshot_contains(app: OktiApp, needle: str) -> bool:
 @pytest.mark.asyncio
 async def test_streamed_response_rendered_and_scrolled(monkeypatch):
     """A long streamed response must be rendered and scrolled into view."""
+    monkeypatch.setattr("okti.tui.app.check_needs_onboarding", lambda: False, raising=False)
+    monkeypatch.setattr("okti.tui.onboarding.check_needs_onboarding", lambda *a, **kw: False)
     config = OktiConfig(
         default_provider=ProviderID.OPENROUTER,
         default_model="mock-model",
@@ -106,6 +108,8 @@ async def test_streamed_response_rendered_and_scrolled(monkeypatch):
 @pytest.mark.asyncio
 async def test_short_streamed_response_rendered(monkeypatch):
     """A short streamed response must also be rendered in the chat pane."""
+    monkeypatch.setattr("okti.tui.app.check_needs_onboarding", lambda: False, raising=False)
+    monkeypatch.setattr("okti.tui.onboarding.check_needs_onboarding", lambda *a, **kw: False)
     config = OktiConfig(
         default_provider=ProviderID.OPENROUTER,
         default_model="mock-model",
