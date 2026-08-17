@@ -4,8 +4,8 @@
 coding tool with multi-provider LLM support, transactional edits,
 session undo/redo, cost estimation, and a hash-pinned plugin trust model.
 
-![status](https://img.shields.io/badge/tests-197%20passing-brightgreen)
-![coverage](https://img.shields.io/badge/coverage-56%25-yellow)
+![status](https://img.shields.io/badge/tests-393%20passing-brightgreen)
+![coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 ![bandit](https://img.shields.io/badge/bandit-clean-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-blue)
@@ -305,24 +305,32 @@ true` in `config.toml`. See the Security Model section.
 
 ## Roadmap
 
-Roughly in priority order — pull requests welcome on any of these.
+Recently shipped:
 
-- [ ] **Budget alerts.** `budget_usd_per_session` cap in config;
-      auto-disable `--yolo` and warn when a plan estimate would breach it.
-- [ ] **Shell completions.** `okti --install-completions` for bash,
-      zsh, fish.
-- [ ] **Prompt template overrides.** Load `~/.config/okti/prompts/*.md`
-      to override the built-in per-provider system prompts.
+- [x] **Budget alerts.** Tiered `BudgetGuard` (warn / disable_yolo /
+      hard_stop) driven by `config.budget.session_usd_cap`.
+- [x] **Prompt template overrides.** `~/.config/okti/prompts/*.md`
+      override the built-in per-provider system prompts.
+- [x] **Public plugin API v1.** `@okti.tool` decorator + auto-schema.
+- [x] **Server mode.** `okti serve` hosts the `AgentLoop` over HTTP.
+- [x] **Cross-session memory.** Persistent user profile plus TF-IDF
+      `/recall` across every stored session.
+- [x] **Shell completions.** `okti --install-completions {bash,zsh,fish}`
+      emits a completion script to stdout.
+- [x] **Coverage → 70 %+.** 393 tests, 70 % line coverage.
+
+Still open — PRs welcome:
+
+- [ ] **Plan-estimate budget check.** Warn (and optionally block) when
+      a plan's projected cost would push the session past
+      `budget.session_usd_cap`.
+- [ ] **OpenTelemetry spans.** Wire real OTLP export into the existing
+      `okti.telemetry` scaffold for tool calls, provider requests, and
+      permission checks.
 - [ ] **Docker image.** `ghcr.io/oktayelipek/okti:latest` bundling
       okti + Ollama for a one-command sandbox.
-- [ ] **OpenTelemetry spans.** Emit OTLP for tool calls, provider
-      requests, and permission checks.
-- [ ] **Public plugin API v1.** Version the `ToolDef` contract, add a
-      `@okti.tool` decorator, publish a plugin cookbook.
 - [ ] **Web UI.** FastAPI + WebSocket front-end reusing the same
       `AgentLoop` core; multi-user session support.
-- [ ] **Coverage → 70 %+.** Wider integration tests for `okti/models`
-      and `okti/tui`.
 
 ---
 
@@ -337,7 +345,7 @@ pip install -e ".[dev]"
 pre-commit install
 
 # Full test suite with coverage floor
-pytest tests/ -v --cov --cov-fail-under=45
+pytest tests/ -v --cov --cov-fail-under=70
 
 # Static checks (all should pass with zero findings)
 ruff check okti/ tests/

@@ -4,6 +4,25 @@ All notable changes to okti will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- `--install-completions {bash,zsh,fish}` emits a shell completion
+  script to stdout. Single-source option list in `okti.completions`.
+
+### Fixed
+- Streaming tool-call JSON arguments are now repaired iteratively
+  (previously only trailing commas were handled). Unterminated strings,
+  missing brackets, and dangling keys survive truncation.
+- `ContextManager.estimate_tokens` counts `tool_call.name`, `tool_call.id`,
+  and `Message.tool_call_id` — previously invisible to compaction.
+
+### Changed
+- Coverage floor raised: `--cov-fail-under=45` → `70` (CI + docs).
+- README roadmap synced with what has actually shipped (budget guard,
+  prompt overrides, plugin API v1, server mode, cross-session recall,
+  shell completions).
+
 ## [0.3.0] - 2026-08-17
 
 ### Renamed
