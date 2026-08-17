@@ -106,6 +106,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Print the resolved system prompt and the file it came from, then exit.",
     )
     parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Run as an HTTP server. Requires `pip install okti[server]`. "
+             "Use --host and --port to configure the bind address.",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Bind address for --serve mode (default: 127.0.0.1).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Bind port for --serve mode (default: 8765).",
+    )
+    parser.add_argument(
         "prompt",
         nargs="*",
         help="Direct prompt (skips TUI, runs non-interactive).",
@@ -115,11 +133,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    is_tui = not (args.prompt or args.non_interactive or args.print_prompt)
+    is_tui = not (args.prompt or args.non_interactive
+                  or args.print_prompt or args.serve)
     _configure_logging(args.verbose, tui_mode=is_tui)
 
     if args.print_prompt:
         _print_prompt(args)
+        return
+
+    if args.serve:
+        _run_server(args)
         return
 
     # If direct prompt is given, run non-interactive mode
@@ -127,6 +150,26 @@ def main(argv: list[str] | None = None) -> None:
         _run_non_interactive(args)
     else:
         _run_tui(args)
+
+
+def _run_server(args: argparse.Namespace) -> None:
+    """Boot `okti serve` — HTTP server hosting the AgentLoop."""
+    from okti.config import load_config
+
+    try:
+        from okti import server
+    except ImportError as e:
+        print(
+            f"okti serve requires the [server] extra: pip install okti[server]\n"
+            f"(underlying error: {e})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    config = load_config(config_path=args.config)
+    if args.model:
+        config.default_model = args.model
+    server.run(config=config, host=args.host, port=args.port)
 
 
 def _print_prompt(args: argparse.Namespace) -> None:
