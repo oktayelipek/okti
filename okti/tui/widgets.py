@@ -21,7 +21,7 @@ class FileTree(Static):
         self.workspace = Path(workspace or os.environ.get("OKTI_WORKSPACE", os.getcwd()))
 
     def compose(self):
-        tree = Tree(str(self.workspace.name), id="file-tree-view")
+        tree: Tree[str] = Tree(str(self.workspace.name), id="file-tree-view")
         tree.root.expand()
         self._build_tree(tree.root, self.workspace)
         yield tree

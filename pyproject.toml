@@ -110,6 +110,7 @@ skips = ["B101"]  # assert_used — legitimate in tests & guard clauses
 python_version = "3.11"
 ignore_missing_imports = true
 no_strict_optional = true
+check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 show_error_codes = true
