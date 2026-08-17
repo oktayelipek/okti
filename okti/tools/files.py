@@ -186,6 +186,123 @@ async def multi_edit(path: str, edits: list[dict[str, str]]) -> str:
     return await asyncio.to_thread(_multi_edit_sync, path, edits)
 
 
+def _multi_file_edit_sync(operations: list[dict]) -> str:
+    """Two-phase atomic edit across several files.
+
+    Phase 1 — plan: for every operation, read the file and apply the
+    listed old_string→new_string substitutions *in memory*. Any missing
+    file or any edit whose old_string is not present aborts before any
+    write happens, so no partial state ever lands on disk.
+
+    Phase 2 — write: back up each original file to `<path>.okti.bak`,
+    write the new content, then delete the backups. If a write fails
+    midway, every already-written file is restored from its backup.
+    """
+    if not operations:
+        return "Error: no operations provided"
+
+    # Phase 1 — validate & compute new contents
+    plans: list[tuple[Path, str, str]] = []  # (resolved, original, new_content)
+    for i, op in enumerate(operations):
+        path = op.get("path")
+        edits = op.get("edits") or []
+        if not isinstance(path, str) or not isinstance(edits, list):
+            return f"Error: operation {i + 1} missing 'path' or 'edits'"
+        try:
+            resolved = _resolve_path(path)
+        except ValueError as e:
+            return f"Error: operation {i + 1}: {e}"
+        if not resolved.exists():
+            return f"Error: operation {i + 1}: File not found: {path}"
+
+        original = resolved.read_text(encoding="utf-8", errors="replace")
+        content = original
+        for j, edit in enumerate(edits):
+            old = edit.get("old_string", "")
+            new = edit.get("new_string", "")
+            if not old:
+                return (
+                    f"Error: operation {i + 1}, edit {j + 1}: "
+                    f"empty old_string in {path}"
+                )
+            if old in content:
+                content = content.replace(old, new, 1)
+                continue
+            # Normalized-newline fallback
+            content_norm = content.replace("\r\n", "\n")
+            old_norm = old.replace("\r\n", "\n")
+            new_norm = new.replace("\r\n", "\n")
+            if old_norm in content_norm:
+                content = content_norm.replace(old_norm, new_norm, 1)
+                continue
+            return (
+                f"Error: operation {i + 1}, edit {j + 1}: "
+                f"old_string not found in {path}. "
+                f"Aborting all edits — no files were modified."
+            )
+        plans.append((resolved, original, content))
+
+    # Phase 2 — write with rollback on failure
+    written: list[tuple[Path, str]] = []  # (path, original) for rollback
+    for resolved, original, new_content in plans:
+        backup = resolved.with_suffix(resolved.suffix + ".okti.bak")
+        try:
+            backup.write_text(original, encoding="utf-8")
+            resolved.write_text(new_content, encoding="utf-8")
+            written.append((resolved, original))
+        except OSError as e:
+            # Roll everything back
+            for prev_path, prev_original in written:
+                try:
+                    prev_path.write_text(prev_original, encoding="utf-8")
+                except OSError:
+                    pass
+            # Clean up any backup we may have created
+            for prev_path, _ in written:
+                bak = prev_path.with_suffix(prev_path.suffix + ".okti.bak")
+                if bak.exists():
+                    try:
+                        bak.unlink()
+                    except OSError:
+                        pass
+            if backup.exists():
+                try:
+                    backup.unlink()
+                except OSError:
+                    pass
+            return (
+                f"Error: failed to write {resolved}: {e}. "
+                f"Rolled back {len(written)} file(s)."
+            )
+
+    # Success — remove backups
+    for resolved, _ in written:
+        bak = resolved.with_suffix(resolved.suffix + ".okti.bak")
+        if bak.exists():
+            try:
+                bak.unlink()
+            except OSError:
+                pass
+
+    return f"Applied edits across {len(plans)} file(s) atomically."
+
+
+async def multi_file_edit(operations: list[dict]) -> str:
+    """Apply edits to multiple files atomically.
+
+    Argument shape:
+        [
+          {"path": "a.py", "edits": [{"old_string": "...", "new_string": "..."}]},
+          {"path": "b.py", "edits": [...]},
+        ]
+
+    If any file is missing, or any old_string is not present, NO file is
+    modified. If a write fails mid-way, previously-written files are
+    restored from a `.okti.bak` sibling backup.
+    """
+    return await asyncio.to_thread(_multi_file_edit_sync, operations)
+
+
 def _hash_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
     try:
         resolved = _resolve_path(path)
@@ -403,6 +520,45 @@ def register_file_tools(registry: ToolRegistry) -> None:
             "required": ["path", "edits"],
         },
         handler=multi_edit,
+        risk_level="medium",
+    ))
+
+    registry.register(ToolDef(
+        name="multi_file_edit",
+        description=(
+            "Apply edits to multiple files atomically. Two-phase: validates "
+            "every edit before touching disk; if any file is missing or any "
+            "old_string is not found, NO file is modified. Backs up each file "
+            "to <path>.okti.bak during writes and rolls back on write failure. "
+            "Use this when a change spans several files that must land together."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "edits": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "old_string": {"type": "string"},
+                                        "new_string": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "description": "Per-file edit batches",
+                },
+            },
+            "required": ["operations"],
+        },
+        handler=multi_file_edit,
         risk_level="medium",
     ))
 
