@@ -54,6 +54,57 @@ _PROVIDER_PROMPT_MAP = {
     "xai": "openai.md",
 }
 
+# Universal override name — applies to every provider if no
+# provider-specific file exists in the same directory.
+_UNIVERSAL_OVERRIDE = "okti.md"
+
+
+def _prompt_search_dirs(workspace_dir: Path | None) -> list[tuple[Path, str]]:
+    """Return search directories in priority order (highest first).
+
+    User overrides win over bundled defaults so anyone can shadow the
+    okti-shipped prompt without editing the installed package.
+    """
+    dirs: list[tuple[Path, str]] = []
+    if workspace_dir:
+        dirs.append((Path(workspace_dir) / ".okti" / "prompts", "workspace"))
+    dirs.append((Path.home() / ".config" / "okti" / "prompts", "user config"))
+    dirs.append((
+        Path(__file__).resolve().parent.parent.parent / "prompts",
+        "bundled defaults",
+    ))
+    return dirs
+
+
+def _find_prompt(
+    provider_id: str,
+    workspace_dir: Path | None,
+) -> tuple[str | None, str]:
+    """Return (content, source_label) for the highest-priority prompt.
+
+    For each search directory we try, in order:
+      1. The provider-specific file (e.g. claude.md)
+      2. The universal okti.md override
+
+    That gives users two override strategies: per-provider tuning, or
+    a single okti.md that applies to whichever provider they use.
+    """
+    provider_file = _PROVIDER_PROMPT_MAP.get(provider_id.lower(), "local.md")
+
+    for directory, label in _prompt_search_dirs(workspace_dir):
+        for filename in (provider_file, _UNIVERSAL_OVERRIDE):
+            target = directory / filename
+            if not target.is_file():
+                continue
+            try:
+                text = target.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeDecodeError) as e:
+                logger.warning("Prompt read failed at %s: %s", target, e)
+                continue
+            if text:
+                return text, f"{label}:{filename}"
+    return None, ""
+
 
 def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None = None) -> str:
     """Load the best matching system prompt for a provider with memory and universal rules injected."""
@@ -75,29 +126,11 @@ def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None =
         "- `read_file('conflict://list')`: Inspect active git merge conflicts\n"
     )
 
-    prompt_filename = _PROVIDER_PROMPT_MAP.get(provider_id.lower(), "local.md")
-
-    # Search paths for prompt files
-    search_dirs = [
-        Path(__file__).resolve().parent.parent.parent / "prompts",  # repo root / prompts
-        Path.home() / ".config" / "okti" / "prompts",
-    ]
-    if workspace_dir:
-        search_dirs.insert(0, Path(workspace_dir) / ".okti" / "prompts")
-
-    content = None
-    for d in search_dirs:
-        target = d / prompt_filename
-        if target.exists() and target.is_file():
-            try:
-                content = target.read_text(encoding="utf-8").strip()
-                logger.debug("Loaded system prompt from %s", target)
-                break
-            except Exception as e:
-                logger.warning("Failed to read prompt from %s: %s", target, e)
-
+    content, source = _find_prompt(provider_id, workspace_dir)
     if not content:
         content = _DEFAULT_SYSTEM_PROMPT
+        source = "<builtin default>"
+    logger.debug("System prompt loaded from %s", source)
 
     # Inject memory and VFS/rules
     extra_sections = []
@@ -114,3 +147,37 @@ def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None =
     elif combined_extra:
         return f"{content}\n\n{combined_extra}"
     return content
+
+
+def describe_prompt(
+    provider_id: str = "ollama",
+    workspace_dir: Path | None = None,
+) -> str:
+    """Report which prompt file is active and where every search dir looked."""
+    provider_file = _PROVIDER_PROMPT_MAP.get(provider_id.lower(), "local.md")
+    lines = [
+        f"## System prompt for provider `{provider_id}`",
+        "",
+        f"Provider-specific filename: `{provider_file}`",
+        f"Universal override filename: `{_UNIVERSAL_OVERRIDE}`",
+        "",
+        "### Search order (highest priority first)",
+        "",
+    ]
+    picked = False
+    for directory, label in _prompt_search_dirs(workspace_dir):
+        for filename in (provider_file, _UNIVERSAL_OVERRIDE):
+            target = directory / filename
+            exists = target.is_file()
+            marker = "✓" if exists and not picked else (" " if exists else "·")
+            if exists and not picked:
+                picked = True
+                lines.append(f"  {marker} {label}: `{target}`  ← ACTIVE")
+            elif exists:
+                lines.append(f"  {marker} {label}: `{target}`  (shadowed)")
+            else:
+                lines.append(f"  {marker} {label}: `{target}`")
+    if not picked:
+        lines.append("")
+        lines.append("_No override files found — using built-in default._")
+    return "\n".join(lines)

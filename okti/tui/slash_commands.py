@@ -33,6 +33,7 @@ class SlashCommandHandler:
             "/onboard": self._setup,
             "/plan": self._plan,
             "/budget": self._budget,           # type: ignore[attr-defined]
+            "/prompt": self._prompt,           # type: ignore[attr-defined]
             "/plans": self._plans,             # type: ignore[attr-defined]
             "/plan-resume": self._plan_resume, # type: ignore[attr-defined]
             "/approve": self._approve,
@@ -740,3 +741,20 @@ async def _budget_wrapper(self, args: str) -> None:
 
 
 SlashCommandHandler._budget = _budget_wrapper                # type: ignore[attr-defined]
+
+
+async def _prompt_impl(handler, args: str) -> None:
+    """/prompt — show which system-prompt file is active and its search chain."""
+    from okti.agent.prompts import describe_prompt
+
+    provider = handler.app.config.default_provider.value
+    workspace = handler.app.config.workspace_dir
+    report = describe_prompt(provider_id=provider, workspace_dir=workspace)
+    handler.app.chat_pane.add_assistant_message(report)
+
+
+async def _prompt_wrapper(self, args: str) -> None:
+    await _prompt_impl(self, args)
+
+
+SlashCommandHandler._prompt = _prompt_wrapper                # type: ignore[attr-defined]

@@ -101,6 +101,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run without the TUI (for scripting/piping).",
     )
     parser.add_argument(
+        "--print-prompt",
+        action="store_true",
+        help="Print the resolved system prompt and the file it came from, then exit.",
+    )
+    parser.add_argument(
         "prompt",
         nargs="*",
         help="Direct prompt (skips TUI, runs non-interactive).",
@@ -110,14 +115,34 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
-    is_tui = not (args.prompt or args.non_interactive)
+    is_tui = not (args.prompt or args.non_interactive or args.print_prompt)
     _configure_logging(args.verbose, tui_mode=is_tui)
+
+    if args.print_prompt:
+        _print_prompt(args)
+        return
 
     # If direct prompt is given, run non-interactive mode
     if args.prompt or args.non_interactive:
         _run_non_interactive(args)
     else:
         _run_tui(args)
+
+
+def _print_prompt(args: argparse.Namespace) -> None:
+    """Show which prompt file okti would use and the full resolved text."""
+    from okti.agent.prompts import describe_prompt, load_system_prompt
+    from okti.config import load_config
+
+    config = load_config(config_path=args.config)
+    provider = config.default_provider.value if hasattr(
+        config.default_provider, "value"
+    ) else str(config.default_provider)
+
+    print(describe_prompt(provider_id=provider, workspace_dir=config.workspace_dir))
+    print()
+    print("--- resolved system prompt ---")
+    print(load_system_prompt(provider_id=provider, workspace_dir=config.workspace_dir))
 
 
 def _run_non_interactive(args: argparse.Namespace) -> None:
