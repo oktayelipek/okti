@@ -77,10 +77,26 @@ class MCPClient:
             raise
 
     async def _connect_stdio(self, config: MCPServerConfig) -> list[MCPTool]:
-        """Connect to an MCP server via stdio transport."""
+        """Connect to an MCP server via stdio transport.
+
+        The full handshake (spawn + initialize + tools/list) is bounded by
+        a 30-second timeout. On timeout the subprocess is force-killed to
+        avoid orphaned processes.
+        """
         if not config.command:
             raise ValueError("stdio transport requires a command")
 
+        try:
+            return await asyncio.wait_for(
+                self._connect_stdio_inner(config),
+                timeout=30.0,
+            )
+        except TimeoutError:
+            logger.error("MCP stdio handshake timed out for %s; killing process", config.name)
+            await self.disconnect(config.name)
+            raise
+
+    async def _connect_stdio_inner(self, config: MCPServerConfig) -> list[MCPTool]:
         env = {**__import__("os").environ, **config.env}
         process = await asyncio.create_subprocess_exec(
             config.command, *config.args,
@@ -103,18 +119,15 @@ class MCPClient:
             },
         })
 
-        # Wait for response
         response = await self._recv_stdio(config.name)
         if "error" in response:
             raise RuntimeError(f"MCP init error: {response['error']}")
 
-        # Send initialized notification
         await self._send_stdio(config.name, {
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
         })
 
-        # List tools
         return await self._list_tools_stdio(config.name)
 
     async def _connect_sse(self, config: MCPServerConfig) -> list[MCPTool]:
@@ -286,12 +299,27 @@ class MCPClient:
         return [self._tools[n] for n in tool_names if n in self._tools]
 
     async def disconnect(self, server_name: str) -> None:
-        """Disconnect from an MCP server."""
+        """Disconnect from an MCP server, escalating to SIGKILL after 5s."""
         conn = self._connections.pop(server_name, None)
         if conn:
             if isinstance(conn, asyncio.subprocess.Process):
-                conn.terminate()
-                await conn.wait()
+                if conn.returncode is None:
+                    conn.terminate()
+                    try:
+                        await asyncio.wait_for(conn.wait(), timeout=5.0)
+                    except TimeoutError:
+                        logger.warning(
+                            "MCP server %s did not exit within 5s of SIGTERM; sending SIGKILL",
+                            server_name,
+                        )
+                        conn.kill()
+                        try:
+                            await asyncio.wait_for(conn.wait(), timeout=2.0)
+                        except TimeoutError:
+                            logger.error(
+                                "MCP server %s still alive after SIGKILL; giving up",
+                                server_name,
+                            )
             elif isinstance(conn, httpx.AsyncClient):
                 await conn.aclose()
 
