@@ -34,6 +34,7 @@ class SlashCommandHandler:
             "/plan": self._plan,
             "/budget": self._budget,           # type: ignore[attr-defined]
             "/prompt": self._prompt,           # type: ignore[attr-defined]
+            "/profile": self._profile,         # type: ignore[attr-defined]
             "/plans": self._plans,             # type: ignore[attr-defined]
             "/plan-resume": self._plan_resume, # type: ignore[attr-defined]
             "/approve": self._approve,
@@ -758,3 +759,52 @@ async def _prompt_wrapper(self, args: str) -> None:
 
 
 SlashCommandHandler._prompt = _prompt_wrapper                # type: ignore[attr-defined]
+
+
+async def _profile_impl(handler, args: str) -> None:
+    """/profile — inspect or mutate the cross-session user profile."""
+    from okti.context.profile import (
+        _profile_path,
+        forget_facts,
+        load_user_profile,
+    )
+
+    args = args.strip()
+    if not args:
+        text = load_user_profile()
+        path = _profile_path()
+        if not text:
+            handler.app.chat_pane.add_assistant_message(
+                f"_No profile yet at `{path}`._\n\nAsk me to remember something and I will."
+            )
+            return
+        handler.app.chat_pane.add_assistant_message(
+            f"### User profile\n_Source: `{path}`_\n\n{text}"
+        )
+        return
+
+    parts = args.split(maxsplit=1)
+    verb = parts[0].lower()
+    rest = parts[1] if len(parts) > 1 else ""
+    if verb in ("path", "where"):
+        handler.app.chat_pane.add_assistant_message(f"Profile path: `{_profile_path()}`")
+    elif verb == "forget":
+        if not rest:
+            handler.app.chat_pane.add_status(
+                "Usage: /profile forget <substring>", style="bold red"
+            )
+            return
+        result = forget_facts(rest)
+        handler.app.chat_pane.add_status(result, style="green")
+    else:
+        handler.app.chat_pane.add_status(
+            "Usage: /profile | /profile path | /profile forget <substring>",
+            style="dim",
+        )
+
+
+async def _profile_wrapper(self, args: str) -> None:
+    await _profile_impl(self, args)
+
+
+SlashCommandHandler._profile = _profile_wrapper              # type: ignore[attr-defined]

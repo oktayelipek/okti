@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from okti.context.memory import build_memory_prompt, load_project_memory
+from okti.context.profile import build_profile_prompt, load_user_profile
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,9 @@ def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None =
     memory = load_project_memory(workspace_dir)
     memory_section = build_memory_prompt(memory) if memory else ""
 
+    profile = load_user_profile()
+    profile_section = build_profile_prompt(profile) if profile else ""
+
     rules = load_universal_rules(workspace_dir)
     rules_section = render_rules_markdown(rules) if rules else ""
 
@@ -132,8 +136,12 @@ def load_system_prompt(provider_id: str = "ollama", workspace_dir: Path | None =
         source = "<builtin default>"
     logger.debug("System prompt loaded from %s", source)
 
-    # Inject memory and VFS/rules
+    # Inject memory / profile / rules / VFS in a stable order.
+    # Profile lives closest to the top because cross-session user
+    # preferences should influence style before per-repo rules kick in.
     extra_sections = []
+    if profile_section:
+        extra_sections.append(profile_section)
     if memory_section:
         extra_sections.append(memory_section)
     if rules_section:
