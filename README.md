@@ -1,6 +1,8 @@
-# okti
+# ▓▒░ OKTI ░▒▓
 
-Agentic coding tool for the terminal — smarter than the rest.
+**Neural code interface for the terminal.** A cyberpunk-styled agentic
+coding tool with multi-provider LLM support, hardened plugin sandboxing,
+and a hash-pinned trust model.
 
 ## Install
 
@@ -131,18 +133,54 @@ model = "claude-sonnet-4-20250514"
 - **Diff-based editing**: Token-efficient file edits (edit_file sends only changed lines)
 - **Plan mode**: Scope → plan → approve → execute workflow
 - **Context compaction**: Automatic context management for long conversations
-- **Textual TUI**: Rich terminal interface with live streaming markdown
+- **Textual TUI**: Cyberpunk-themed terminal interface with live streaming markdown
 - **Tool system**: File ops, bash commands, web search
 - **Permission system**: allow/ask/deny per tool, yolo mode for full automation
 - **Session persistence**: SQLite-backed conversation history
+
+## Security Model
+
+okti runs LLM-driven code and can execute arbitrary tools. The following
+defenses are applied by default:
+
+- **Plugins disabled by default.** Third-party Python plugins run with
+  process privileges. Enable per-hash trust via `config.plugins`:
+  ```toml
+  [plugins]
+  enabled = true
+  trusted_hashes = ["<sha256-of-plugin.py>", "..."]
+  ```
+  Any edit to a plugin invalidates its hash. Static AST scanning flags
+  `subprocess`, `socket`, `ctypes`, `eval`/`exec`, and `os.system`.
+
+- **Bash denylist.** `run_command` refuses catastrophic patterns
+  (`rm -rf /`, fork bomb, `mkfs`, `dd of=/dev/sd*`, `chmod -R 777 /`,
+  `shutdown`/`reboot`). `working_directory` is validated to stay under
+  `OKTI_WORKSPACE`.
+
+- **MCP subprocess lifetime.** stdio handshake is bounded at 30s;
+  `disconnect` escalates SIGTERM → wait 5s → SIGKILL to avoid orphans.
+
+- **Permission gates.** Every non-trivial tool call runs through the
+  allow/ask/deny gate before invocation. `--yolo` disables the gate; use
+  only in isolated sandboxes.
 
 ## Development
 
 ```bash
 git clone https://github.com/oktayelipek/oktigent.git
-cd okti
+cd oktigent
 pip install -e ".[dev]"
-pytest tests/ -v
+
+# Install pre-commit hooks (ruff, bandit, mypy, secret detection)
+pre-commit install
+
+# Run the full test suite with coverage
+pytest tests/ -v --cov --cov-fail-under=45
+
+# Static checks
+ruff check okti/ tests/
+bandit -c pyproject.toml -r okti/
 ```
 
 ## License

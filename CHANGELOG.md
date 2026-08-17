@@ -4,6 +4,43 @@ All notable changes to okti will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] - 2026-08-17
+
+### Renamed
+- Package `oktigent` → `okti`. Class `OktigentApp` → `OktiApp`,
+  `OktigentConfig` → `OktiConfig`. Env vars `OKTIGENT_*` → `OKTI_*`.
+  Config dir `.oktigent/` → `.okti/`. Entry point `okti` → `okti.__main__:main`.
+
+### Added — Security
+- **Plugin sandboxing**: disabled by default; `config.plugins.trusted_hashes`
+  gates loading with SHA256 pinning; AST scan flags `subprocess`, `socket`,
+  `ctypes`, `eval`/`exec`, `os.system`. 8 new security tests.
+- **Bash denylist**: `run_command` refuses `rm -rf /`, fork bomb, `mkfs`,
+  `dd of=/dev/sd*`, `chmod -R 777 /`, `shutdown`/`reboot`, redirect to
+  block devices. `working_directory` validated against workspace escape.
+  28 new tests.
+- **MCP stdio hardening**: 30s handshake timeout; `disconnect` escalates
+  SIGTERM → wait 5s → SIGKILL to prevent orphaned server processes.
+
+### Added — TUI
+- Cyberpunk theme applied to the default palette (neon pink #ff2a6d, cyan
+  #05d9e8, magenta #d900ff on #0a0014). Redrawn OKTI ASCII banner.
+  Updated HUD glyphs (`▓▒░ OKTI ▸ ◈ ▸ ⬢ ¤`).
+
+### Added — CI/Quality
+- `pytest-cov` with `--cov-fail-under=45` (currently 49%).
+- `.pre-commit-config.yaml`: ruff, bandit, mypy, secret detection.
+- Separate CI jobs for security (bandit) and typecheck (mypy).
+- Ruff rulesets expanded (E/W/F/I/B/UP/SIM).
+
+### Fixed
+- `context/manager.py`: missing `Any` import (F821 runtime hazard).
+- `tools/files.py`: added `raise ... from err` chaining.
+- TUI streaming regression tests now correctly disable onboarding overlay.
+- Exception specificity: bare `except Exception` narrowed in `rules.py`
+  (OSError, UnicodeDecodeError), `loop.py`, `compaction.py`, and
+  `openai_compat.py` (httpx.HTTPError, json.JSONDecodeError, RuntimeError).
+
 ## [0.2.0] - 2026-08-16
 
 ### Added

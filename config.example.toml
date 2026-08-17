@@ -25,6 +25,18 @@ background_max_chars = 50000
 auto_save = true  # auto-save after each assistant turn (default: true)
 # Use --no-auto-save CLI flag or auto_save = false to disable
 
+# Plugins — DISABLED BY DEFAULT.
+# Plugins execute arbitrary Python with process privileges. To enable:
+#   1. Compute the SHA256 of each plugin file:
+#        python -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" <file>
+#   2. Add each hash below.
+#   3. Set enabled = true.
+# Any edit to a plugin file invalidates its hash and requires re-approval.
+[plugins]
+enabled = false
+trusted_hashes = []
+# allow_untrusted = false  # dev/CI escape hatch — do NOT use in production
+
 # Provider configurations
 [providers.ollama]
 base_url = "http://localhost:11434"

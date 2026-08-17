@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "okti"
-version = "0.1.0"
+version = "0.3.0"
 description = "Agentic coding tool for the terminal — smarter than the rest."
 readme = "README.md"
 license = "MIT"

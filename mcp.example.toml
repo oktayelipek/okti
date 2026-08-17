@@ -1,20 +1,60 @@
-# MCP (Model Context Protocol) server configuration
-# Place at ~/.config/okti/mcp.toml
+# MCP (Model Context Protocol) server configuration for okti.
+#
+# Place this file at: ~/.config/okti/mcp.toml
+#
+# Transport modes:
+#   * stdio — spawns a local subprocess and speaks JSON-RPC over stdin/stdout.
+#            Best for local tools that read/write files.
+#            okti caps the initial handshake at 30 seconds; disconnect
+#            escalates SIGTERM → SIGKILL after 5s to avoid orphaned procs.
+#
+#   * sse   — connects to a remote HTTP server that streams events.
+#            Best for hosted services and shared infrastructure.
+#
+# For each server, `name` becomes the tool prefix: mcp_<name>_<toolname>.
+#
+# Uncomment and edit the blocks below for the servers you actually run.
 
-# Example: filesystem server
+# ---------------------------------------------------------------------------
+# Filesystem (stdio) — expose a directory read/write to the model.
+# ---------------------------------------------------------------------------
 # [servers.filesystem]
-# command = "npx"
-# args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/your/project"]
 # transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/project"]
 
-# Example: GitHub server
+# ---------------------------------------------------------------------------
+# GitHub (stdio) — issue/PR access. Requires a personal-access token.
+# The token stays in this file; keep permissions 600 and never commit it.
+# ---------------------------------------------------------------------------
 # [servers.github]
+# transport = "stdio"
 # command = "npx"
 # args = ["-y", "@modelcontextprotocol/server-github"]
-# env = { GITHUB_TOKEN = "ghp_..." }
-# transport = "stdio"
+# env = { GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxx" }
 
-# Example: SSE server (remote)
+# ---------------------------------------------------------------------------
+# Postgres (stdio) — read-only SQL query tool.
+# ---------------------------------------------------------------------------
+# [servers.postgres]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"]
+
+# ---------------------------------------------------------------------------
+# Remote (SSE) — connect to a hosted MCP endpoint.
+# ---------------------------------------------------------------------------
 # [servers.remote]
-# url = "http://localhost:8080/mcp"
 # transport = "sse"
+# url = "http://localhost:8080/mcp"
+
+# ---------------------------------------------------------------------------
+# Troubleshooting
+# ---------------------------------------------------------------------------
+# * "Failed to connect to MCP server X" in the log — the command exited or
+#   the initialize handshake did not complete within 30s. Run the command
+#   manually to see stderr.
+# * "MCP server X did not exit within 5s of SIGTERM" — the server ignored
+#   the graceful shutdown; okti sends SIGKILL as a fallback.
+# * Tools appear with the prefix mcp_<server_name>_<tool_name> in /models
+#   and the tool registry.
