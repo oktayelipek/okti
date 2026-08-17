@@ -32,6 +32,8 @@ class SlashCommandHandler:
             "/setup": self._setup,
             "/onboard": self._setup,
             "/plan": self._plan,
+            "/plans": self._plans,             # type: ignore[attr-defined]
+            "/plan-resume": self._plan_resume, # type: ignore[attr-defined]
             "/approve": self._approve,
             "/models": self._models,
             "/model": self._model,
@@ -144,6 +146,7 @@ class SlashCommandHandler:
         task = pending[0]
         from okti.agent.plan import TaskStatus, build_task_prompt
         task.status = TaskStatus.IN_PROGRESS
+        await _persist_plan(self.app.agent, plan)
         # Surface the running-total cost preview so the user can bail out early.
         self.app.chat_pane.add_status(
             f"Estimate for remaining plan: {plan.cost_summary(self.app.config.default_model)}",
@@ -155,6 +158,7 @@ class SlashCommandHandler:
         self.app.tool_dock.update_status(f"Task: {task.id}")
         self.app._run_agent(prompt)
         task.status = TaskStatus.COMPLETED
+        await _persist_plan(self.app.agent, plan)
 
     async def _plan(self, args: str) -> None:
         if not args:
@@ -191,6 +195,7 @@ class SlashCommandHandler:
             if plan:
                 plan.scope = args
                 self.app.agent._current_plan = plan
+                await _persist_plan(self.app.agent, plan)
 
                 lines = [f"## Plan: {args}", f"\n{plan.summary}\n", "### Tasks:"]
                 for task in plan.tasks:
@@ -602,3 +607,99 @@ Configure MCP servers in `~/.config/okti/mcp.toml`""")
 Plugins are Python files in `~/.config/okti/plugins/` or `.okti/plugins/`.""")
         else:
             self.app.chat_pane.add_status(f"Unknown plugin subcommand: {subcmd}. Try /plugin help", style="bold red")
+
+
+# ---------------------------------------------------------------------------
+# Plan persistence helpers
+# ---------------------------------------------------------------------------
+
+async def _persist_plan(agent, plan) -> None:
+    """Save the current plan snapshot to the session's plans table.
+
+    Silently no-ops if there is no session_id yet — the auto-save
+    machinery in _auto_save() will create one on the next assistant
+    turn, at which point the plan will be re-persisted.
+    """
+    if not agent.session_id:
+        return
+    from okti.storage.db import Storage
+    try:
+        storage = Storage()
+        await storage.connect()
+        await storage.save_plan(agent.session_id, plan.to_dict())
+        await storage.close()
+    except Exception as e:  # storage errors must not break the plan flow
+        logger.warning("Plan persist failed: %s", e)
+
+
+async def _plans_impl(handler) -> None:
+    from okti.storage.db import Storage
+    storage = Storage()
+    await storage.connect()
+    rows = await storage.list_plans(limit=20)
+    await storage.close()
+    if not rows:
+        handler.app.chat_pane.add_status("No plans saved yet.", style="dim")
+        return
+    lines = ["## Saved plans", ""]
+    for p in rows:
+        n_pending = sum(1 for t in p["tasks"] if t.get("status") == "pending")
+        n_total = len(p["tasks"])
+        lines.append(
+            f"- **{p['id']}** — {p['scope'][:60]}  ·  "
+            f"{n_pending}/{n_total} pending  ·  {p['updated_at'][:19]}"
+        )
+    lines.append("\nType `/plan-resume` to resume the most recent plan attached to this session.")
+    handler.app.chat_pane.add_assistant_message("\n".join(lines))
+
+
+async def _plan_resume_impl(handler) -> None:
+    from okti.agent.plan import Plan
+    from okti.storage.db import Storage
+
+    agent = handler.app.agent
+    if not agent.session_id:
+        handler.app.chat_pane.add_status(
+            "No active session — start a plan first or /load a session.",
+            style="dim",
+        )
+        return
+
+    storage = Storage()
+    await storage.connect()
+    raw = await storage.load_plan(agent.session_id)
+    await storage.close()
+
+    if not raw:
+        handler.app.chat_pane.add_status(
+            "No stored plan for this session.", style="dim"
+        )
+        return
+
+    plan = Plan.from_dict(raw)
+    agent._current_plan = plan
+    n_pending = len(plan.pending_tasks())
+    n_total = len(plan.tasks)
+    lines = [
+        f"## Resumed plan: {plan.scope}",
+        f"\n{plan.summary}\n",
+        f"Status: **{n_total - n_pending}/{n_total}** tasks complete, {n_pending} pending.",
+        f"Estimate for remaining work: {plan.cost_summary(handler.app.config.default_model)}",
+        "",
+        "Type `/approve` to continue with the next pending task.",
+    ]
+    handler.app.chat_pane.add_assistant_message("\n".join(lines))
+
+
+# Attach the handlers to the class after definition to keep the top of
+# the file readable.
+async def _plans_wrapper(self, args: str) -> None:
+    await _plans_impl(self)
+
+
+async def _plan_resume_wrapper(self, args: str) -> None:
+    await _plan_resume_impl(self)
+
+
+SlashCommandHandler._plans = _plans_wrapper                  # type: ignore[attr-defined]
+SlashCommandHandler._plan_resume = _plan_resume_wrapper      # type: ignore[attr-defined]

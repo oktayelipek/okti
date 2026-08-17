@@ -55,6 +55,17 @@ class Storage:
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+            CREATE TABLE IF NOT EXISTS plans (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                summary TEXT DEFAULT '',
+                tasks_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id);
         """)
         await self._db.commit()
 
@@ -206,7 +217,84 @@ class Storage:
 
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session and its messages."""
+        await self._db.execute("DELETE FROM plans WHERE session_id = ?", (session_id,))
         await self._db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
         cursor = await self._db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         await self._db.commit()
         return cursor.rowcount > 0
+
+    # --- Plans (long-horizon checkpoints) ---
+
+    async def save_plan(self, session_id: str, plan_dict: dict[str, Any]) -> str:
+        """Upsert the active plan for a session.
+
+        Only one active plan per session — we keep the plan id stable
+        across saves so callers can display "Plan #<id>" without churn.
+        """
+        now = datetime.now(UTC).isoformat()
+        tasks_json = json.dumps(plan_dict.get("tasks", []), ensure_ascii=False)
+        scope = plan_dict.get("scope", "")
+        summary = plan_dict.get("summary", "")
+
+        cursor = await self._db.execute(
+            "SELECT id FROM plans WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            plan_id = row[0]
+            await self._db.execute(
+                "UPDATE plans SET scope = ?, summary = ?, tasks_json = ?, updated_at = ? WHERE id = ?",
+                (scope, summary, tasks_json, now, plan_id),
+            )
+        else:
+            plan_id = uuid.uuid4().hex[:12]
+            await self._db.execute(
+                "INSERT INTO plans (id, session_id, scope, summary, tasks_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (plan_id, session_id, scope, summary, tasks_json, now, now),
+            )
+        await self._db.commit()
+        return plan_id
+
+    async def load_plan(self, session_id: str) -> dict[str, Any] | None:
+        """Return the most recent plan attached to a session, or None."""
+        cursor = await self._db.execute(
+            "SELECT id, scope, summary, tasks_json, created_at, updated_at "
+            "FROM plans WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        try:
+            tasks = json.loads(row[3])
+        except json.JSONDecodeError:
+            tasks = []
+        return {
+            "id": row[0],
+            "scope": row[1],
+            "summary": row[2],
+            "tasks": tasks,
+            "created_at": row[4],
+            "updated_at": row[5],
+        }
+
+    async def list_plans(self, limit: int = 20) -> list[dict[str, Any]]:
+        cursor = await self._db.execute(
+            "SELECT id, session_id, scope, summary, tasks_json, updated_at "
+            "FROM plans ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                tasks = json.loads(row[4])
+            except json.JSONDecodeError:
+                tasks = []
+            out.append({
+                "id": row[0], "session_id": row[1], "scope": row[2],
+                "summary": row[3], "tasks": tasks, "updated_at": row[5],
+            })
+        return out

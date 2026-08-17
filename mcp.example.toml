@@ -42,6 +42,21 @@
 # args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"]
 
 # ---------------------------------------------------------------------------
+# Browser (stdio) — control a real browser via Microsoft's Playwright MCP.
+# Tools it exposes (prefixed as mcp_browser_*): navigate, click, type,
+# screenshot, snapshot, wait_for, evaluate, fill_form. Chromium is
+# downloaded on first use (~250 MB).
+# ---------------------------------------------------------------------------
+# [servers.browser]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@playwright/mcp@latest"]
+# # Optional flags:
+# #   --headless       run without a visible window (CI-friendly)
+# #   --executable-path /path/to/chrome  use an existing install
+# #   --user-data-dir /path/to/profile   persist cookies/session
+
+# ---------------------------------------------------------------------------
 # Remote (SSE) — connect to a hosted MCP endpoint.
 # ---------------------------------------------------------------------------
 # [servers.remote]

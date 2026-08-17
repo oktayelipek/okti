@@ -97,6 +97,31 @@ class Plan:
         completion_tokens = total - prompt_tokens
         return estimate_cost(model_name, prompt_tokens, completion_tokens)
 
+    @classmethod
+    def from_dict(cls, raw: dict) -> Plan:
+        """Reconstruct a Plan from its `to_dict()` representation."""
+        tasks: list[Task] = []
+        for t in raw.get("tasks", []):
+            status_val = t.get("status", "pending")
+            try:
+                status = TaskStatus(status_val)
+            except ValueError:
+                status = TaskStatus.PENDING
+            tasks.append(Task(
+                id=t.get("id", ""),
+                title=t.get("title", ""),
+                description=t.get("description", ""),
+                files_involved=t.get("files_involved", []) or [],
+                dependencies=t.get("dependencies", []) or [],
+                status=status,
+                result=t.get("result"),
+            ))
+        return cls(
+            scope=raw.get("scope", ""),
+            summary=raw.get("summary", ""),
+            tasks=tasks,
+        )
+
     def cost_summary(self, model_name: str) -> str:
         """Human-readable cost preview for /approve confirmation."""
         pending = len(self.pending_tasks())
