@@ -2,6 +2,13 @@
 
 Supports sandboxed execution and terminal output management.
 Large outputs are truncated and referenced by ID (background context).
+
+Defense-in-depth:
+  * cwd is restricted to under the workspace root (no `../` escape).
+  * A denylist rejects catastrophic patterns (rm -rf /, fork bomb,
+    mkfs, dd of=/dev/sd*, chmod -R 777 /). This is advisory, not
+    a substitute for the permission layer.
+  * Output is capped at 50k chars; timeout capped at 120s.
 """
 
 from __future__ import annotations
@@ -9,15 +16,47 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 
 from okti.tools.registry import ToolDef, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
-# Max output size before it goes to "background"
 MAX_OUTPUT_CHARS = 50_000
 MAX_TIMEOUT_SECONDS = 120
+
+# Catastrophic patterns refused before invocation. The permission system
+# is the primary control; this is a coarse backstop for obvious footguns.
+_COMMAND_DENYLIST: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\brm\s+(-[a-zA-Z]*[rRfF][a-zA-Z]*\s+)+(/|/\*|~|\$HOME)(\s|$)"),
+    re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"),  # fork bomb
+    re.compile(r"\bmkfs(\.\w+)?\s+/dev/"),
+    re.compile(r"\bdd\s+.*\bof=/dev/(sd|nvme|hd|xvd|vd)"),
+    re.compile(r"\bchmod\s+-[Rr]?\s*777\s+/(\s|$)"),
+    re.compile(r"\bshutdown\b|\breboot\b|\bhalt\b|\bpoweroff\b"),
+    re.compile(r">\s*/dev/(sd|nvme|hd)[a-z]"),
+)
+
+
+def _is_denied(command: str) -> str | None:
+    """Return a reason if command matches a denylist pattern, else None."""
+    for pat in _COMMAND_DENYLIST:
+        if pat.search(command):
+            return pat.pattern
+    return None
+
+
+def _resolve_cwd(workspace: Path, working_directory: str | None) -> Path | None:
+    """Resolve cwd, refusing anything outside the workspace root."""
+    if not working_directory:
+        return workspace
+    candidate = (workspace / working_directory).resolve()
+    try:
+        candidate.relative_to(workspace.resolve())
+    except ValueError:
+        return None
+    return candidate
 
 
 async def run_command(
@@ -29,8 +68,15 @@ async def run_command(
 
     For long outputs, returns a truncated version with a reference note.
     """
+    denial = _is_denied(command)
+    if denial:
+        logger.warning("Refused command matching denylist pattern %r: %s", denial, command)
+        return f"Error: Command refused by safety denylist (pattern: {denial}). Rewrite without this pattern or invoke manually."
+
     ws = Path(os.environ.get("OKTI_WORKSPACE", os.getcwd()))
-    cwd = ws / working_directory if working_directory else ws
+    cwd = _resolve_cwd(ws, working_directory)
+    if cwd is None:
+        return f"Error: working_directory escapes workspace: {working_directory}"
 
     if not cwd.exists():
         return f"Error: Directory not found: {working_directory or '.'}"
