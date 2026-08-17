@@ -107,12 +107,22 @@ class Tracer:
 
     @contextmanager
     def span(self, name: str, **attrs: Any):
-        """Context manager that records a span even when disabled (no-op)."""
+        """Context manager that records a span even when disabled (no-op).
+
+        Yields exactly once — either None (fully disabled), the OTel span
+        (OTel-only or OTel+JSONL), or the home-grown Span (JSONL-only).
+        When both OTel and the JSONL exporter are on, the span is
+        recorded to both without double-yielding.
+        """
         if not self._enabled and self._otel_tracer is None:
             yield None
             return
 
-        # OTel path — delegate to real tracer if wired
+        home_span: Span | None = None
+        t0 = time.perf_counter()
+        if self._enabled:
+            home_span = Span(name=name, start=time.time(), attrs=dict(attrs))
+
         if self._otel_tracer is not None:
             with self._otel_tracer.start_as_current_span(name) as otel_span:
                 for k, v in attrs.items():
@@ -122,22 +132,29 @@ class Tracer:
                 except Exception as e:
                     otel_span.record_exception(e)
                     otel_span.set_status(_otel_error_status(str(e)))
+                    if home_span is not None:
+                        home_span.status = "error"
+                        home_span.error = f"{type(e).__name__}: {e}"[:500]
                     raise
-            if not self._enabled:
-                return
+                finally:
+                    if home_span is not None:
+                        # Attributes may have been mutated by the caller through
+                        # otel_span.set_attribute; mirror common ones back.
+                        home_span.duration_ms = (time.perf_counter() - t0) * 1000.0
+                        self._emit(home_span)
+            return
 
-        # Home-grown path
-        span = Span(name=name, start=time.time(), attrs=dict(attrs))
-        t0 = time.perf_counter()
+        # JSONL-only path
+        assert home_span is not None
         try:
-            yield span
+            yield home_span
         except Exception as e:
-            span.status = "error"
-            span.error = f"{type(e).__name__}: {e}"[:500]
+            home_span.status = "error"
+            home_span.error = f"{type(e).__name__}: {e}"[:500]
             raise
         finally:
-            span.duration_ms = (time.perf_counter() - t0) * 1000.0
-            self._emit(span)
+            home_span.duration_ms = (time.perf_counter() - t0) * 1000.0
+            self._emit(home_span)
 
     def _emit(self, span: Span) -> None:
         with self._lock:
@@ -152,7 +169,10 @@ class Tracer:
 
 
 def _otel_error_status(msg: str) -> Any:
-    from opentelemetry.trace import Status, StatusCode
+    try:
+        from opentelemetry.trace import Status, StatusCode
+    except ImportError:
+        return None
     return Status(StatusCode.ERROR, msg)
 
 
@@ -173,3 +193,48 @@ def get_tracer() -> Tracer:
 def span(name: str, **attrs: Any):
     """Shortcut: `with span("foo", key=val): ...`."""
     return _TRACER.span(name, **attrs)
+
+
+def configure_telemetry(config: Any) -> None:
+    """Apply telemetry settings from ``config.telemetry`` at startup.
+
+    - Enables the JSONL exporter if ``telemetry.enabled`` is True.
+    - Sets up an OTLP exporter when opentelemetry-sdk is installed and
+      either ``otlp_endpoint`` or ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set,
+      unless a TracerProvider is already installed (respects the user's
+      own SDK setup).
+    """
+    tconf = config.telemetry
+    if tconf.enabled:
+        _TRACER.enable(export_path=tconf.export_path)
+
+    endpoint = tconf.otlp_endpoint or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return
+    try:
+        from opentelemetry import trace as _trace
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError as e:
+        logger.info("OTLP endpoint set but OTel SDK not installed: %s", e)
+        return
+
+    current = _trace.get_tracer_provider()
+    # Only install our provider if nothing real is set up yet. The default
+    # provider is a ProxyTracerProvider — anything else means the user
+    # (or another library) has already configured tracing.
+    if isinstance(current, TracerProvider):
+        logger.debug("TracerProvider already installed; skipping okti setup")
+    else:
+        provider = TracerProvider(resource=Resource.create({
+            "service.name": tconf.service_name,
+        }))
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+        _trace.set_tracer_provider(provider)
+
+    # Refresh cached tracer handle so subsequent spans go through the SDK.
+    _TRACER._otel_tracer = _trace.get_tracer("okti")

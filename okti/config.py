@@ -109,6 +109,9 @@ class TelemetryConfig(BaseModel):
 
     enabled: bool = False
     export_path: Path | None = None  # defaults to $OKTI_WORKSPACE/.okti/traces.jsonl
+    # OTLP exporter — only used when opentelemetry-sdk is installed.
+    otlp_endpoint: str | None = None  # e.g. "http://localhost:4317"; falls back to OTEL_EXPORTER_OTLP_ENDPOINT
+    service_name: str = "okti"
 
 
 class PluginsConfig(BaseModel):

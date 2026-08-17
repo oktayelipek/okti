@@ -183,6 +183,8 @@ def _run_server(args: argparse.Namespace) -> None:
     config = load_config(config_path=args.config)
     if args.model:
         config.default_model = args.model
+    from okti.telemetry import configure_telemetry
+    configure_telemetry(config)
     server.run(config=config, host=args.host, port=args.port)
 
 
@@ -212,6 +214,8 @@ def _run_non_interactive(args: argparse.Namespace) -> None:
         config.default_model = args.model
     if args.yolo:
         config.permissions.yolo = True
+    from okti.telemetry import configure_telemetry
+    configure_telemetry(config)
 
     prompt_text = " ".join(args.prompt) if args.prompt else sys.stdin.read().strip()
     if not prompt_text:
@@ -235,6 +239,8 @@ def _run_tui(args: argparse.Namespace) -> None:
         config.permissions.yolo = True
     if args.no_auto_save:
         config.auto_save = False
+    from okti.telemetry import configure_telemetry
+    configure_telemetry(config)
 
     # Determine session to resume
     resume_session_id = None
