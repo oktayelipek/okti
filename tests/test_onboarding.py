@@ -2,13 +2,14 @@
 
 import os
 import tomllib
-from oktigent.config import OktigentConfig, ProviderConfig, ProviderID
-from oktigent.models.factory import create_provider
-from oktigent.tui.onboarding import check_needs_onboarding, save_config_toml, OnboardingScreen
+
+from okti.config import OktiConfig, ProviderConfig, ProviderID
+from okti.models.factory import create_provider
+from okti.tui.onboarding import OnboardingScreen, check_needs_onboarding, save_config_toml
 
 
 def test_save_config_toml(tmp_path):
-    config = OktigentConfig()
+    config = OktiConfig()
     config.default_provider = ProviderID.ANTHROPIC
     config.default_model = "claude-3-7-sonnet-20250219"
     config.permissions.yolo = True
@@ -43,7 +44,7 @@ def test_check_needs_onboarding_no_file(tmp_path):
     orig_env = os.environ.copy()
     for k in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "DEEPSEEK_API_KEY", "OLLAMA_HOST"]:
         os.environ.pop(k, None)
-        os.environ.pop(f"OKTIGENT_{k}", None)
+        os.environ.pop(f"OKTI_{k}", None)
 
     try:
         assert check_needs_onboarding(non_existent) is True
@@ -57,7 +58,7 @@ def test_check_needs_onboarding_missing_key_in_file(tmp_path):
     cfg_file.write_text('default_provider = "openrouter"\n', encoding="utf-8")
 
     orig_env = os.environ.copy()
-    for k in ["OPENROUTER_API_KEY", "OKTIGENT_OPENROUTER_API_KEY"]:
+    for k in ["OPENROUTER_API_KEY", "OKTI_OPENROUTER_API_KEY"]:
         os.environ.pop(k, None)
 
     try:
@@ -68,14 +69,14 @@ def test_check_needs_onboarding_missing_key_in_file(tmp_path):
 
 
 def test_onboarding_screen_instantiation():
-    config = OktigentConfig()
+    config = OktiConfig()
     screen = OnboardingScreen(config)
     assert screen.config == config
     assert screen._selected_provider == "ollama"
 
 
 def test_create_provider_openrouter_with_config_key():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.default_provider = ProviderID.OPENROUTER
     config.providers["openrouter"] = ProviderConfig(api_key="sk-or-test-key-123")
     provider = create_provider(config)

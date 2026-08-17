@@ -1,18 +1,18 @@
-# oktigent installer for Windows
+# okti installer for Windows
 # Usage: powershell -c "irm https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.ps1 | iex"
-# Or:    oktigent
+# Or:    okti
 
 $ErrorActionPreference = "Stop"
 
-$OKTIGENT_VERSION = "latest"
+$OKTI_VERSION = "latest"
 $PYTHON_MIN_VERSION = "3.11"
-$INSTALL_DIR = "$env:LOCALAPPDATA\oktigent"
-$BIN_DIR = "$env:LOCALAPPDATA\oktigent\bin"
+$INSTALL_DIR = "$env:LOCALAPPDATA\okti"
+$BIN_DIR = "$env:LOCALAPPDATA\okti\bin"
 
 function Write-Header {
     Write-Host ""
     Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║        oktigent installer             ║" -ForegroundColor Cyan
+    Write-Host "  ║        okti installer             ║" -ForegroundColor Cyan
     Write-Host "  ║  Agentic coding tool for the terminal ║" -ForegroundColor Cyan
     Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
     Write-Host ""
@@ -60,8 +60,8 @@ function Install-Python {
     }
 }
 
-function Install-Oktigent {
-    Write-Host "[*] Installing oktigent..." -ForegroundColor Cyan
+function Install-Okti {
+    Write-Host "[*] Installing okti..." -ForegroundColor Cyan
     
     # Ensure pip is available
     try {
@@ -71,11 +71,11 @@ function Install-Oktigent {
         python -m pip install --upgrade pip 2>&1 | Out-Null
     }
     
-    # Install oktigent
-    $result = python -m pip install -U oktigent 2>&1
+    # Install okti
+    $result = python -m pip install -U okti 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[!] pip install failed. Trying with --user flag..." -ForegroundColor Yellow
-        python -m pip install -U --user oktigent 2>&1
+        python -m pip install -U --user okti 2>&1
     }
     
     return $LASTEXITCODE -eq 0
@@ -96,8 +96,8 @@ function Add-ToPath {
 
 function Test-Installation {
     try {
-        $version = oktigent --version 2>&1
-        if ($version -match "oktigent") {
+        $version = okti --version 2>&1
+        if ($version -match "okti") {
             return $true
         }
     } catch {}
@@ -117,18 +117,18 @@ if (-not (Test-PythonVersion)) {
 $pythonVersion = python --version 2>&1
 Write-Host "[+] Found: $pythonVersion" -ForegroundColor Green
 
-# Install oktigent
-if (Install-Oktigent) {
+# Install okti
+if (Install-Okti) {
     Add-ToPath
     
     if (Test-Installation) {
         Write-Host ""
-        Write-Host "  ✅ oktigent installed successfully!" -ForegroundColor Green
+        Write-Host "  ✅ okti installed successfully!" -ForegroundColor Green
         Write-Host ""
         Write-Host "  Quick start:" -ForegroundColor White
-        Write-Host "    oktigent                    # Launch TUI" -ForegroundColor Gray
-        Write-Host "    oktigent --help             # Show options" -ForegroundColor Gray
-        Write-Host "    oktigent --yolo              # Skip permission prompts" -ForegroundColor Gray
+        Write-Host "    okti                    # Launch TUI" -ForegroundColor Gray
+        Write-Host "    okti --help             # Show options" -ForegroundColor Gray
+        Write-Host "    okti --yolo              # Skip permission prompts" -ForegroundColor Gray
         Write-Host ""
         Write-Host "  Configure:" -ForegroundColor White
         Write-Host "    /provider openai             # Switch to OpenAI" -ForegroundColor Gray
@@ -139,11 +139,11 @@ if (Install-Oktigent) {
         Write-Host '    $env:ANTHROPIC_API_KEY = "sk-ant-..."' -ForegroundColor Gray
         Write-Host ""
     } else {
-        Write-Host "[!] Installation completed but 'oktigent' command not found." -ForegroundColor Yellow
-        Write-Host "    Try restarting your terminal or running: pip install oktigent" -ForegroundColor Gray
+        Write-Host "[!] Installation completed but 'okti' command not found." -ForegroundColor Yellow
+        Write-Host "    Try restarting your terminal or running: pip install okti" -ForegroundColor Gray
     }
 } else {
     Write-Host "[!] Installation failed." -ForegroundColor Red
-    Write-Host "    Try manually: pip install oktigent" -ForegroundColor Gray
+    Write-Host "    Try manually: pip install okti" -ForegroundColor Gray
     exit 1
 }

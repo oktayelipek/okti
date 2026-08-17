@@ -1,11 +1,12 @@
 """Tests for VFS virtual URI schemes and Universal Rules Engine."""
 
-import pytest
 from pathlib import Path
 
-from oktigent.agent.rules import load_universal_rules, render_rules_markdown
-from oktigent.tools.files import read_file
-from oktigent.tools.vfs import is_virtual_uri, resolve_virtual_uri
+import pytest
+
+from okti.agent.rules import load_universal_rules, render_rules_markdown
+from okti.tools.files import read_file
+from okti.tools.vfs import is_virtual_uri, resolve_virtual_uri
 
 
 def test_is_virtual_uri():
@@ -23,7 +24,7 @@ def test_load_universal_rules(tmp_path: Path):
     # Setup mock rule files
     (tmp_path / ".cursorrules").write_text("Use TypeScript strict mode.", encoding="utf-8")
     (tmp_path / ".clinerules").write_text("Always run tests before committing.", encoding="utf-8")
-    
+
     gh_dir = tmp_path / ".github"
     gh_dir.mkdir()
     (gh_dir / "copilot-instructions.md").write_text("Prefer functional patterns.", encoding="utf-8")
@@ -31,7 +32,7 @@ def test_load_universal_rules(tmp_path: Path):
 
     rules = load_universal_rules(workspace=tmp_path)
     assert len(rules) == 4
-    
+
     types = {r.source_type for r in rules}
     assert "cursor" in types
     assert "cline" in types
@@ -47,7 +48,7 @@ def test_load_universal_rules(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_vfs_rule_uri_resolution(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("OKTIGENT_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("OKTI_WORKSPACE", str(tmp_path))
     (tmp_path / ".cursorrules").write_text("Cursor specific rule.", encoding="utf-8")
 
     out_all = await resolve_virtual_uri("rule://all")
@@ -63,7 +64,7 @@ async def test_vfs_rule_uri_resolution(tmp_path: Path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_read_file_transparent_vfs_dispatch(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("OKTIGENT_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("OKTI_WORKSPACE", str(tmp_path))
     (tmp_path / "AGENTS.md").write_text("Test agent guidelines.", encoding="utf-8")
 
     # read_file transparently resolves rule:// URI

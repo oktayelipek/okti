@@ -1,6 +1,6 @@
 """Tests for plan mode generation, parsing, and execution helpers."""
 
-from oktigent.agent.plan import (
+from okti.agent.plan import (
     Plan,
     Task,
     TaskStatus,

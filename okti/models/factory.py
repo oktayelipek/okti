@@ -1,0 +1,93 @@
+"""Provider factory — creates the right provider based on config.
+
+Supports: Ollama, OpenAI, DeepSeek, OpenRouter, xAI, Anthropic, Gemini.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+
+from okti.config import OktiConfig
+from okti.models.provider import BaseProvider
+
+logger = logging.getLogger(__name__)
+
+
+def create_provider(
+    config: OktiConfig,
+    provider_override: str | None = None,
+) -> BaseProvider:
+    """Create a provider instance based on config.
+
+    Args:
+        config: Full okti configuration
+        provider_override: Override provider (e.g., "ollama", "openai", "anthropic")
+    """
+    provider_id = provider_override or config.default_provider.value
+
+    # Check if it's a compound string like "ollama/codellama"
+    if "/" in provider_id:
+        provider_id, model_override = provider_id.split("/", 1)
+        config.default_model = model_override
+
+    provider_config = config.providers.get(provider_id)
+
+    if provider_id == "ollama":
+        from okti.models.ollama import OllamaProvider
+        base_url = provider_config.base_url if provider_config else None
+        return OllamaProvider(base_url=base_url or os.environ.get("OLLAMA_HOST") or "http://localhost:11434")
+
+    elif provider_id == "openai":
+        from okti.models.openai_compat import OpenAICompatProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("OPENAI_API_KEY") or os.environ.get("OKTI_OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OpenAI API key required. Set OPENAI_API_KEY or OKTI_OPENAI_API_KEY env var.")
+        return OpenAICompatProvider(api_key=api_key, provider_name="openai")
+
+    elif provider_id == "deepseek":
+        from okti.models.openai_compat import OpenAICompatProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OKTI_DEEPSEEK_API_KEY")
+        if not api_key:
+            raise ValueError("DeepSeek API key required. Set DEEPSEEK_API_KEY or OKTI_DEEPSEEK_API_KEY env var.")
+        return OpenAICompatProvider(api_key=api_key, provider_name="deepseek")
+
+    elif provider_id == "openrouter":
+        from okti.models.openai_compat import OpenAICompatProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OKTI_OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY or OKTI_OPENROUTER_API_KEY env var.")
+        return OpenAICompatProvider(api_key=api_key, provider_name="openrouter")
+
+    elif provider_id == "xai":
+        from okti.models.openai_compat import OpenAICompatProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("XAI_API_KEY") or os.environ.get("OKTI_XAI_API_KEY")
+        if not api_key:
+            raise ValueError("xAI API key required. Set XAI_API_KEY or OKTI_XAI_API_KEY env var.")
+        return OpenAICompatProvider(api_key=api_key, provider_name="xai")
+
+    elif provider_id == "anthropic":
+        from okti.models.anthropic import AnthropicProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OKTI_ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY or OKTI_ANTHROPIC_API_KEY env var.")
+        base_url = provider_config.base_url if provider_config else None
+        return AnthropicProvider(api_key=api_key, base_url=base_url or "https://api.anthropic.com")
+
+    elif provider_id == "gemini":
+        from okti.models.gemini import GeminiProvider
+        api_key = (provider_config.api_key if provider_config else None) or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("OKTI_GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("Gemini API key required. Set GOOGLE_API_KEY, GEMINI_API_KEY, or OKTI_GEMINI_API_KEY env var.")
+        return GeminiProvider(api_key=api_key)
+
+    else:
+        # Try as OpenAI-compatible (generic fallback)
+        from okti.models.openai_compat import OpenAICompatProvider
+        if provider_config and provider_config.api_key and provider_config.base_url:
+            return OpenAICompatProvider(
+                api_key=provider_config.api_key,
+                base_url=provider_config.base_url,
+                provider_name=provider_id,
+            )
+        raise ValueError(f"Unknown provider: {provider_id}. Set a base_url and api_key in config.")

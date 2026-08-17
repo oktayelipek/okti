@@ -1,19 +1,22 @@
 """Tests for AgentLoop execution with tools and mock provider."""
 
+from collections.abc import AsyncIterator
+from typing import Any
+
 import pytest
-from typing import Any, AsyncIterator
-from oktigent.agent.loop import AgentLoop
-from oktigent.config import OktigentConfig, PermissionLevel
-from oktigent.models.provider import (
+
+from okti.agent.loop import AgentLoop
+from okti.config import OktiConfig, PermissionLevel
+from okti.models.provider import (
     BaseProvider,
     Message,
     ProviderResponse,
     Role,
     StreamChunk,
-    ToolCall,
     TokenUsage,
+    ToolCall,
 )
-from oktigent.tools.registry import ToolDef, ToolRegistry
+from okti.tools.registry import ToolDef, ToolRegistry
 
 
 class MockProvider(BaseProvider):
@@ -56,7 +59,7 @@ class MockProvider(BaseProvider):
 
 @pytest.mark.asyncio
 async def test_run_single_direct_response():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     loop = AgentLoop(config)
 
@@ -74,7 +77,7 @@ async def test_run_single_direct_response():
 
 @pytest.mark.asyncio
 async def test_run_single_with_tool_execution():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     registry = ToolRegistry()
 
@@ -118,7 +121,7 @@ async def test_run_single_with_tool_execution():
 
 @pytest.mark.asyncio
 async def test_execute_tools_permission_deny():
-    config = OktigentConfig()
+    config = OktiConfig()
     registry = ToolRegistry()
 
     async def dangerous_tool() -> str:
@@ -141,7 +144,7 @@ async def test_execute_tools_permission_deny():
 
 
 def test_stream_event_result_attribute():
-    from oktigent.agent.loop import StreamEvent
+    from okti.agent.loop import StreamEvent
 
     event = StreamEvent(type="tool_end", tool="read_file", content="file content here")
     assert event.content == "file content here"

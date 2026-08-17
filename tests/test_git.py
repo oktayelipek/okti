@@ -1,10 +1,16 @@
 """Tests for git tools."""
 
 import pytest
-from oktigent.tools.git_tools import (
-    git_status, git_diff, git_log, git_branch, git_status_detailed, register_git_tools,
+
+from okti.tools.git_tools import (
+    git_branch,
+    git_diff,
+    git_log,
+    git_status,
+    git_status_detailed,
+    register_git_tools,
 )
-from oktigent.tools.registry import ToolRegistry
+from okti.tools.registry import ToolRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +19,7 @@ def setup_git_workspace(tmp_path, monkeypatch):
     import subprocess
     workspace = tmp_path / "repo"
     workspace.mkdir()
-    monkeypatch.setenv("OKTIGENT_WORKSPACE", str(workspace))
+    monkeypatch.setenv("OKTI_WORKSPACE", str(workspace))
 
     # Init git repo
     subprocess.run(["git", "init"], cwd=str(workspace), capture_output=True)

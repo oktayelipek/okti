@@ -1,7 +1,8 @@
 """Tests for TUI animations, speedometer, mascots, and themes."""
 
 import time
-from oktigent.tui.animations import (
+
+from okti.tui.animations import (
     DEV_QUOTES,
     MASCOTS,
     THEMES,

@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "oktigent"
+name = "okti"
 version = "0.1.0"
 description = "Agentic coding tool for the terminal — smarter than the rest."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "oktigent contributors" },
+    { name = "okti contributors" },
 ]
 keywords = ["ai", "coding", "agent", "terminal", "tui", "llm"]
 classifiers = [
@@ -37,22 +37,80 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff>=0.5",
+    "bandit[toml]>=1.7",
+    "mypy>=1.11",
+    "pre-commit>=3.5",
 ]
 
 [project.scripts]
-oktigent = "oktigent.__main__:main"
+okti = "okti.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/oktayelipek/oktigent"
 
 [tool.hatch.build.targets.wheel]
-packages = ["oktigent"]
+packages = ["okti"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long — handled by formatter
+    "B008",  # do not perform function calls in argument defaults (pydantic uses this)
+    "B007",  # unused loop control variable — noise
+    "SIM105", # contextlib.suppress preference — style choice
+    "SIM117", # nested with statements — readable at times
+    "UP042",  # replace StrEnum — pydantic compat
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "SIM117", "E402", "F841"]
+"okti/tui/*" = ["SIM103", "SIM118"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["okti"]
+branch = true
+omit = [
+    "okti/tui/*",
+    "okti/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+skips = ["B101"]  # assert_used — legitimate in tests & guard clauses
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+show_error_codes = true
+files = ["okti"]

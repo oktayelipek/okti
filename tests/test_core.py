@@ -1,18 +1,17 @@
 """Tests for the agent loop and core components."""
 
-from oktigent.config import OktigentConfig, PermissionLevel, ProviderID
-from oktigent.models.provider import Message, Role, ToolCall, TokenUsage
-from oktigent.tools.registry import ToolRegistry, ToolDef
-from oktigent.agent.permissions import PermissionManager
-from oktigent.context.manager import ContextManager
-
+from okti.agent.permissions import PermissionManager
+from okti.config import OktiConfig, PermissionLevel, ProviderID
+from okti.context.manager import ContextManager
+from okti.models.provider import Message, Role, TokenUsage, ToolCall
+from okti.tools.registry import ToolDef, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Config tests
 # ---------------------------------------------------------------------------
 
 def test_default_config():
-    config = OktigentConfig()
+    config = OktiConfig()
     assert config.default_provider == ProviderID.OLLAMA
     assert config.default_model == "codellama"
     assert config.permissions.yolo is False
@@ -20,12 +19,12 @@ def test_default_config():
 
 
 def test_permission_level_defaults():
-    config = OktigentConfig()
+    config = OktiConfig()
     assert config.permissions.get_level("unknown_tool") == PermissionLevel.ASK
 
 
 def test_yolo_overrides():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     assert config.permissions.get_level("any_tool") == PermissionLevel.ALLOW
 
@@ -94,7 +93,7 @@ def test_tool_registry():
 # ---------------------------------------------------------------------------
 
 def test_permission_manager():
-    config = OktigentConfig()
+    config = OktiConfig()
     registry = ToolRegistry()
     registry.register(ToolDef(name="read_file", description="Read", risk_level="low"))
     registry.register(ToolDef(name="run_command", description="Run", risk_level="destructive"))
@@ -109,7 +108,7 @@ def test_permission_manager():
 # ---------------------------------------------------------------------------
 
 def test_context_manager():
-    config = OktigentConfig()
+    config = OktiConfig()
     cm = ContextManager(config)
 
     messages = [Message(role=Role.USER, content="x" * 1000)]
@@ -122,7 +121,7 @@ def test_context_manager():
 
 
 def test_context_compaction():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.context.max_tokens = 100  # tiny for testing
     cm = ContextManager(config)
 

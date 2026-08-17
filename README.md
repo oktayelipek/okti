@@ -1,4 +1,4 @@
-# oktigent
+# okti
 
 Agentic coding tool for the terminal — smarter than the rest.
 
@@ -21,28 +21,28 @@ powershell -c "irm https://raw.githubusercontent.com/oktayelipek/oktigent/main/i
 ### pip (manual)
 
 ```bash
-pip install oktigent
+pip install okti
 ```
 
 ## Quick Start
 
 ```bash
 # Launch the TUI (interactive setup wizard opens on first run)
-oktigent
+okti
 
 # Run interactive setup wizard explicitly
-oktigent --setup
+okti --setup
 
 # Run with a direct prompt (non-interactive)
-oktigent "create a Python REST API with FastAPI"
+okti "create a Python REST API with FastAPI"
 
 # Skip all permission prompts
-oktigent --yolo
+okti --yolo
 ```
 
 ## Providers
 
-oktigent works with any LLM provider:
+okti works with any LLM provider:
 
 | Provider | API Key Env Var | Example Model |
 |----------|----------------|---------------|
@@ -59,7 +59,7 @@ oktigent works with any LLM provider:
 export OPENAI_API_KEY=sk-...
 
 # Launch with a specific provider
-oktigent --model openai/gpt-4o
+okti --model openai/gpt-4o
 ```
 
 ## Slash Commands
@@ -87,7 +87,7 @@ oktigent --model openai/gpt-4o
 
 ## Hashline: Hash-Anchored Surgical Code Editing
 
-`oktigent` supports content-hash line editing via `hash_edit_file`:
+`okti` supports content-hash line editing via `hash_edit_file`:
 - Inspect code with anchors: `read_file("file.py", hash_anchored=True)` -> `[a1f:10] def hello():`
 - Edit by anchor range: `hash_edit_file("file.py", edits=[{"start_anchor": "a1f:10", "end_anchor": "b2c:12", "replacement": "..."}])`
 - Eliminates whitespace mismatch loops and saves up to 60% output tokens.
@@ -107,7 +107,7 @@ Read live context transparently through `read_file` without learning separate to
 
 ## Configuration
 
-Config file: `~/.config/oktigent/config.toml`
+Config file: `~/.config/okti/config.toml`
 
 ```toml
 default_provider = "ollama"
@@ -140,7 +140,7 @@ model = "claude-sonnet-4-20250514"
 
 ```bash
 git clone https://github.com/oktayelipek/oktigent.git
-cd oktigent
+cd okti
 pip install -e ".[dev]"
 pytest tests/ -v
 ```

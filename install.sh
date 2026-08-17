@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# oktigent installer for macOS/Linux
+# okti installer for macOS/Linux
 # Usage: curl -fsSL https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.sh | bash
 
 set -e
 
-OKTIGENT_VERSION="${OKTIGENT_VERSION:-latest}"
+OKTI_VERSION="${OKTI_VERSION:-latest}"
 PYTHON_MIN_VERSION="3.11"
 
 # Colors
@@ -18,7 +18,7 @@ NC='\033[0m'
 print_header() {
     echo ""
     echo -e "${CYAN}  ╔══════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}  ║        oktigent installer             ║${NC}"
+    echo -e "${CYAN}  ║        okti installer             ║${NC}"
     echo -e "${CYAN}  ║  Agentic coding tool for the terminal ║${NC}"
     echo -e "${CYAN}  ╚══════════════════════════════════════╝${NC}"
     echo ""
@@ -75,7 +75,7 @@ install_python() {
     fi
 }
 
-install_oktigent() {
+install_okti() {
     local python_cmd=$(check_python) || {
         install_python
         python_cmd=$(check_python) || {
@@ -86,24 +86,24 @@ install_oktigent() {
     
     echo -e "${GREEN}[+] Found: $($python_cmd --version)${NC}"
     
-    echo -e "${CYAN}[*] Installing oktigent...${NC}"
+    echo -e "${CYAN}[*] Installing okti...${NC}"
     
     # Upgrade pip
     $python_cmd -m pip install --upgrade pip --quiet 2>/dev/null || true
     
-    # Install oktigent
-    if $python_cmd -m pip install -U oktigent 2>/dev/null; then
-        echo -e "${GREEN}[+] oktigent installed!${NC}"
-    elif $python_cmd -m pip install -U --user oktigent 2>/dev/null; then
-        echo -e "${GREEN}[+] oktigent installed (user mode)!${NC}"
+    # Install okti
+    if $python_cmd -m pip install -U okti 2>/dev/null; then
+        echo -e "${GREEN}[+] okti installed!${NC}"
+    elif $python_cmd -m pip install -U --user okti 2>/dev/null; then
+        echo -e "${GREEN}[+] okti installed (user mode)!${NC}"
     else
         echo -e "${RED}[!] pip install failed. Try manually:${NC}"
-        echo "    $python_cmd -m pip install oktigent"
+        echo "    $python_cmd -m pip install okti"
         exit 1
     fi
     
-    # Check if oktigent is in PATH
-    if ! command -v oktigent &>/dev/null; then
+    # Check if okti is in PATH
+    if ! command -v okti &>/dev/null; then
         local scripts_dir=$($python_cmd -c "import site; import os; print(os.path.join(os.path.dirname(site.getusersitepackages()), 'bin'))" 2>/dev/null)
         if [ -d "$scripts_dir" ]; then
             echo -e "${YELLOW}[*] Adding to PATH: $scripts_dir${NC}"
@@ -115,15 +115,15 @@ install_oktigent() {
 }
 
 verify_installation() {
-    if command -v oktigent &>/dev/null; then
-        local version=$(oktigent --version 2>&1 || echo "oktigent")
+    if command -v okti &>/dev/null; then
+        local version=$(okti --version 2>&1 || echo "okti")
         echo ""
-        echo -e "${GREEN}  ✅ oktigent installed successfully!${NC}"
+        echo -e "${GREEN}  ✅ okti installed successfully!${NC}"
         echo ""
         echo -e "${BOLD}  Quick start:${NC}"
-        echo -e "    ${CYAN}oktigent${NC}                    # Launch TUI"
-        echo -e "    ${CYAN}oktigent --help${NC}             # Show options"
-        echo -e "    ${CYAN}oktigent --yolo${NC}              # Skip permission prompts"
+        echo -e "    ${CYAN}okti${NC}                    # Launch TUI"
+        echo -e "    ${CYAN}okti --help${NC}             # Show options"
+        echo -e "    ${CYAN}okti --yolo${NC}              # Skip permission prompts"
         echo ""
         echo -e "${BOLD}  Configure:${NC}"
         echo -e "    ${CYAN}/provider openai${NC}             # Switch to OpenAI"
@@ -134,13 +134,13 @@ verify_installation() {
         echo -e "    ${CYAN}export ANTHROPIC_API_KEY=\"sk-ant-...\"${NC}"
         echo ""
     else
-        echo -e "${YELLOW}[!] Installation completed but 'oktigent' not in PATH.${NC}"
+        echo -e "${YELLOW}[!] Installation completed but 'okti' not in PATH.${NC}"
         echo "    Try: source ~/.bashrc  OR  source ~/.zshrc"
-        echo "    Or run: pip install oktigent"
+        echo "    Or run: pip install okti"
     fi
 }
 
 # Main
 print_header
-install_oktigent
+install_okti
 verify_installation

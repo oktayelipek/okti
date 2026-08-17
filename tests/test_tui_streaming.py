@@ -11,10 +11,10 @@ import asyncio
 
 import pytest
 
-from oktigent.config import OktigentConfig, ProviderID
-from oktigent.models.provider import Message, ProviderResponse, Role, StreamChunk, TokenUsage
-from oktigent.tui.app import OktigentApp
-from oktigent.tui.streaming import StreamingMarkdown
+from okti.config import OktiConfig, ProviderID
+from okti.models.provider import Message, ProviderResponse, Role, StreamChunk, TokenUsage
+from okti.tui.app import OktiApp
+from okti.tui.streaming import StreamingMarkdown
 
 
 class ChunkedStreamProvider:
@@ -42,7 +42,7 @@ class ChunkedStreamProvider:
         return ["mock-model"]
 
 
-async def _run_agent_turn(app: OktigentApp, text: str) -> None:
+async def _run_agent_turn(app: OktiApp, text: str) -> None:
     """Submit a message and wait for the agent worker to finish."""
     app.agent.messages = [Message(role=Role.SYSTEM, content="system")]
     app.chat_pane.add_user_message("hi")
@@ -55,7 +55,7 @@ async def _run_agent_turn(app: OktigentApp, text: str) -> None:
     await app._pilot_pause()
 
 
-def _screenshot_contains(app: OktigentApp, needle: str) -> bool:
+def _screenshot_contains(app: OktiApp, needle: str) -> bool:
     """Return True if `needle` is drawn to the screen (via exported SVG)."""
     svg = app.export_screenshot()
     text = svg.decode("utf-8", errors="replace") if isinstance(svg, bytes) else str(svg)
@@ -66,13 +66,13 @@ def _screenshot_contains(app: OktigentApp, needle: str) -> bool:
 @pytest.mark.asyncio
 async def test_streamed_response_rendered_and_scrolled(monkeypatch):
     """A long streamed response must be rendered and scrolled into view."""
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.OPENROUTER,
         default_model="mock-model",
     )
     long_text = "Selam! " * 40  # ~280 chars, wraps to several lines
 
-    app = OktigentApp(config=config)
+    app = OktiApp(config=config)
     app.agent.provider = ChunkedStreamProvider(long_text)
 
     async with app.run_test(size=(100, 24)) as pilot:
@@ -106,12 +106,12 @@ async def test_streamed_response_rendered_and_scrolled(monkeypatch):
 @pytest.mark.asyncio
 async def test_short_streamed_response_rendered(monkeypatch):
     """A short streamed response must also be rendered in the chat pane."""
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.OPENROUTER,
         default_model="mock-model",
     )
 
-    app = OktigentApp(config=config)
+    app = OktiApp(config=config)
     app.agent.provider = ChunkedStreamProvider("Hello world")
 
     async with app.run_test(size=(100, 24)) as pilot:

@@ -1,6 +1,6 @@
 """Tests for ModelPickerModal dialog and free-tier categorizer."""
 
-from oktigent.tui.model_picker import ModelPickerModal, ModelItem
+from okti.tui.model_picker import ModelItem, ModelPickerModal
 
 
 def test_model_item_classification():

@@ -1,11 +1,14 @@
 """Tests for subagent runner and execution."""
 
+from collections.abc import AsyncIterator
+from typing import Any
+
 import pytest
-from typing import Any, AsyncIterator
-from oktigent.agent.loop import AgentLoop
-from oktigent.agent.subagent import SubagentConfig, SubagentRunner
-from oktigent.config import OktigentConfig
-from oktigent.models.provider import (
+
+from okti.agent.loop import AgentLoop
+from okti.agent.subagent import SubagentConfig, SubagentRunner
+from okti.config import OktiConfig
+from okti.models.provider import (
     BaseProvider,
     Message,
     ProviderResponse,
@@ -50,7 +53,7 @@ class MockSubagentProvider(BaseProvider):
 
 @pytest.mark.asyncio
 async def test_subagent_runner_plain_output():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     parent_loop = AgentLoop(config)
     parent_loop.provider = MockSubagentProvider("Subagent completed task.")
@@ -70,7 +73,7 @@ async def test_subagent_runner_plain_output():
 
 @pytest.mark.asyncio
 async def test_subagent_runner_structured_output():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     parent_loop = AgentLoop(config)
     json_output = '{"files_found": 3, "status": "ok"}'

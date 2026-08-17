@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to oktigent will be documented in this file.
+All notable changes to okti will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - MCP client (stdio + SSE transport) for external tool integration
-- Plugin system (load custom tools from `.oktigent/plugins/`)
+- Plugin system (load custom tools from `.okti/plugins/`)
 - Git integration (14 operations: status, diff, log, add, commit, push, pull, branch, checkout, create_branch, stash, stash_pop, blame, ignore_add)
 - Auto-save sessions (incremental, after each assistant turn)
 - Session resume (`--resume`, `--session <id>`)

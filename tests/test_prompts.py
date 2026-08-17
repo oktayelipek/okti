@@ -1,22 +1,22 @@
 """Tests for prompt loading and memory integration."""
 
-from oktigent.agent.prompts import load_system_prompt
+from okti.agent.prompts import load_system_prompt
 
 
 def test_load_system_prompt_anthropic():
     prompt = load_system_prompt("anthropic")
-    assert "Claude" in prompt or "oktigent" in prompt
+    assert "Claude" in prompt or "okti" in prompt
     assert "tools" in prompt.lower() or "edit_file" in prompt
 
 
 def test_load_system_prompt_openai():
     prompt = load_system_prompt("openai")
-    assert "oktigent" in prompt
+    assert "okti" in prompt
 
 
 def test_load_system_prompt_fallback():
     prompt = load_system_prompt("unknown_provider")
-    assert "oktigent" in prompt
+    assert "okti" in prompt
 
 
 def test_load_system_prompt_with_workspace_memory(tmp_path):

@@ -1,17 +1,18 @@
 """Tests for Hashline editing engine, Dual Model Advisor, and Smart Code Reviewer."""
 
-import pytest
 from pathlib import Path
 
-from oktigent.tools.hashline import (
+import pytest
+
+from okti.agent.advisor import AdvisorNote
+from okti.agent.reviewer import ReviewFinding, ReviewVerdict, render_review_markdown
+from okti.tools.files import hash_edit_file, read_file
+from okti.tools.hashline import (
     HashAnchorEdit,
     apply_hash_edits,
     compute_line_hash,
     render_hash_anchored_lines,
 )
-from oktigent.tools.files import hash_edit_file, read_file
-from oktigent.agent.reviewer import ReviewFinding, ReviewVerdict, render_review_markdown
-from oktigent.agent.advisor import AdvisorNote
 
 
 def test_compute_line_hash():
@@ -34,7 +35,7 @@ def test_apply_hash_edits_success():
     orig = "def add(a, b):\n    return a - b\n"
     # Find hash for return line
     ret_hash = compute_line_hash("    return a - b")
-    
+
     edits = [
         HashAnchorEdit(
             start_anchor=f"{ret_hash}:2",
@@ -65,7 +66,7 @@ def test_apply_hash_edits_mismatch_fails_safely():
 
 @pytest.mark.asyncio
 async def test_hash_edit_file_tool(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("OKTIGENT_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("OKTI_WORKSPACE", str(tmp_path))
     file_path = tmp_path / "calc.py"
     file_path.write_text("def mul(a, b):\n    return a / b\n", encoding="utf-8")
 

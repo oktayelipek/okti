@@ -1,27 +1,23 @@
-"""Shared test fixtures for oktigent test suite."""
+"""Shared test fixtures for okti test suite."""
 
 from __future__ import annotations
 
-import asyncio
-import tempfile
 from pathlib import Path
-from typing import Generator
 
 import pytest
 
-from oktigent.config import OktigentConfig, ProviderID, ProviderConfig, PermissionsConfig, ContextConfig
-from oktigent.models.provider import BaseProvider, Message, ProviderResponse, Role, TokenUsage, ToolCall
-from oktigent.tools.registry import ToolRegistry, ToolDef
-
+from okti.config import ContextConfig, OktiConfig, PermissionsConfig, ProviderConfig, ProviderID
+from okti.models.provider import BaseProvider, Message, ProviderResponse, Role, TokenUsage, ToolCall
+from okti.tools.registry import ToolDef, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Config fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def config() -> OktigentConfig:
+def config() -> OktiConfig:
     """Minimal test configuration."""
-    return OktigentConfig(
+    return OktiConfig(
         default_provider=ProviderID.OLLAMA,
         default_model="test-model",
         providers={},
@@ -31,9 +27,9 @@ def config() -> OktigentConfig:
 
 
 @pytest.fixture
-def config_with_providers() -> OktigentConfig:
+def config_with_providers() -> OktiConfig:
     """Config with multiple providers configured."""
-    return OktigentConfig(
+    return OktiConfig(
         default_provider=ProviderID.OPENAI,
         default_model="gpt-4o",
         providers={
@@ -84,7 +80,7 @@ class MockProvider(BaseProvider):
         )
 
     async def stream_chat(self, messages, tools=None, model=None, max_tokens=None, temperature=None):
-        from oktigent.models.provider import StreamChunk
+        from okti.models.provider import StreamChunk
         self.call_count += 1
         self.last_messages = messages
         yield StreamChunk(content_delta=self.response_text)

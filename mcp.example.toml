@@ -1,5 +1,5 @@
 # MCP (Model Context Protocol) server configuration
-# Place at ~/.config/oktigent/mcp.toml
+# Place at ~/.config/okti/mcp.toml
 
 # Example: filesystem server
 # [servers.filesystem]

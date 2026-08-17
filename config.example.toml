@@ -1,5 +1,5 @@
-# oktigent configuration file
-# Place at ~/.config/oktigent/config.toml
+# okti configuration file
+# Place at ~/.config/okti/config.toml
 
 # Default provider: ollama, openai, anthropic, gemini, deepseek, openrouter, xai
 default_provider = "ollama"

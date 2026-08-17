@@ -1,14 +1,15 @@
 """Tests for session auto-save, resume, and incremental save."""
 
 import pytest
-from oktigent.config import OktigentConfig
-from oktigent.storage.db import Storage
-from oktigent.models.provider import Message, Role
+
+from okti.config import OktiConfig
+from okti.models.provider import Message, Role
+from okti.storage.db import Storage
 
 
 @pytest.fixture
 def config():
-    return OktigentConfig()
+    return OktiConfig()
 
 
 @pytest.fixture
@@ -100,11 +101,11 @@ async def test_delete_session_nonexistent(storage):
 # ---------------------------------------------------------------------------
 
 def test_auto_save_default_true():
-    config = OktigentConfig()
+    config = OktiConfig()
     assert config.auto_save is True
 
 
 def test_auto_save_can_disable():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.auto_save = False
     assert config.auto_save is False

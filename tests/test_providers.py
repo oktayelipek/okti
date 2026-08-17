@@ -1,19 +1,23 @@
 """Tests for provider implementations with mocks."""
 
 import pytest
-from oktigent.models.provider import (
-    BaseProvider, Message, ProviderResponse, Role, TokenUsage, ToolCall, StreamChunk,
-)
-from oktigent.models.factory import create_provider
-from oktigent.config import OktigentConfig, ProviderID, ProviderConfig
 
+from okti.config import OktiConfig, ProviderConfig, ProviderID
+from okti.models.factory import create_provider
+from okti.models.provider import (
+    Message,
+    ProviderResponse,
+    Role,
+    TokenUsage,
+    ToolCall,
+)
 
 # ---------------------------------------------------------------------------
 # Provider factory tests
 # ---------------------------------------------------------------------------
 
 def test_create_provider_ollama():
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.OLLAMA,
         default_model="codellama",
         providers={"ollama": ProviderConfig(base_url="http://localhost:11434")},
@@ -25,7 +29,7 @@ def test_create_provider_ollama():
 
 
 def test_create_provider_openai():
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.OPENAI,
         default_model="gpt-4o",
         providers={"openai": ProviderConfig(api_key="test-key")},
@@ -35,7 +39,7 @@ def test_create_provider_openai():
 
 
 def test_create_provider_anthropic():
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.ANTHROPIC,
         default_model="claude-sonnet-4-20250514",
         providers={"anthropic": ProviderConfig(api_key="test-key")},
@@ -45,7 +49,7 @@ def test_create_provider_anthropic():
 
 
 def test_create_provider_gemini():
-    config = OktigentConfig(
+    config = OktiConfig(
         default_provider=ProviderID.GEMINI,
         default_model="gemini-2.5-flash",
         providers={"gemini": ProviderConfig(api_key="test-key")},

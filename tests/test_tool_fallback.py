@@ -12,8 +12,8 @@ from unittest import mock
 
 import pytest
 
-from oktigent.models.openai_compat import OpenAICompatProvider
-from oktigent.models.provider import Message, Role
+from okti.models.openai_compat import OpenAICompatProvider
+from okti.models.provider import Message, Role
 
 
 class _FakeResponse:
@@ -92,7 +92,7 @@ async def test_stream_chat_falls_back_when_tools_unsupported():
 
     chunks = []
     with mock.patch(
-        "oktigent.models.openai_compat.httpx.AsyncClient",
+        "okti.models.openai_compat.httpx.AsyncClient",
         side_effect=lambda timeout=120: _FakeClient(responses, record),
     ):
         async for chunk in provider.stream_chat(
@@ -122,7 +122,7 @@ async def test_stream_chat_raises_on_other_errors():
     record: list[dict] = []
 
     with mock.patch(
-        "oktigent.models.openai_compat.httpx.AsyncClient",
+        "okti.models.openai_compat.httpx.AsyncClient",
         side_effect=lambda timeout=120: _FakeClient(responses, record),
     ):
         chunks = []

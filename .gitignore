@@ -23,9 +23,9 @@ env/
 .DS_Store
 Thumbs.db
 
-# oktigent
+# okti
 *.db
-.oktigent/
+.okti/
 test_workspace/
 
 # Testing

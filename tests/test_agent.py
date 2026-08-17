@@ -1,17 +1,16 @@
 """Tests for agent loop and streaming."""
 
-from oktigent.agent.loop import AgentLoop, StreamEvent
-from oktigent.config import OktigentConfig
-from oktigent.models.provider import Message, Role, ToolCall
-from oktigent.tools.registry import ToolRegistry, ToolDef
-
+from okti.agent.loop import AgentLoop, StreamEvent
+from okti.config import OktiConfig
+from okti.models.provider import Message, Role, ToolCall
+from okti.tools.registry import ToolDef, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # AgentLoop initialization tests
 # ---------------------------------------------------------------------------
 
 def test_agent_loop_init():
-    config = OktigentConfig()
+    config = OktiConfig()
     loop = AgentLoop(config)
     assert loop.config == config
     assert loop.session_id is None
@@ -20,7 +19,7 @@ def test_agent_loop_init():
 
 
 def test_agent_loop_with_custom_registry():
-    config = OktigentConfig()
+    config = OktiConfig()
     registry = ToolRegistry()
     registry.register(ToolDef(name="test_tool", description="Test", risk_level="low"))
     loop = AgentLoop(config, registry=registry)
@@ -28,9 +27,9 @@ def test_agent_loop_with_custom_registry():
 
 
 def test_agent_loop_system_prompt():
-    config = OktigentConfig()
+    config = OktiConfig()
     loop = AgentLoop(config)
-    assert "oktigent" in loop.system_prompt.lower()
+    assert "okti" in loop.system_prompt.lower()
     assert "tool" in loop.system_prompt.lower()
 
 
@@ -64,24 +63,24 @@ def test_stream_event_repr():
 # ---------------------------------------------------------------------------
 
 def test_permission_check_yolo():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.permissions.yolo = True
     loop = AgentLoop(config)
-    from oktigent.config import PermissionLevel
+    from okti.config import PermissionLevel
     assert loop.permissions.check("run_command") == PermissionLevel.ALLOW
 
 
 def test_permission_check_low_risk():
-    config = OktigentConfig()
+    config = OktiConfig()
     loop = AgentLoop(config)
-    from oktigent.config import PermissionLevel
+    from okti.config import PermissionLevel
     assert loop.permissions.check("read_file") == PermissionLevel.ALLOW
 
 
 def test_permission_check_destructive():
-    config = OktigentConfig()
+    config = OktiConfig()
     loop = AgentLoop(config)
-    from oktigent.config import PermissionLevel
+    from okti.config import PermissionLevel
     assert loop.permissions.check("run_command") == PermissionLevel.ASK
 
 
@@ -90,7 +89,7 @@ def test_permission_check_destructive():
 # ---------------------------------------------------------------------------
 
 def test_context_compaction_trigger():
-    config = OktigentConfig()
+    config = OktiConfig()
     config.context.max_tokens = 50  # Very small for testing
     loop = AgentLoop(config)
 

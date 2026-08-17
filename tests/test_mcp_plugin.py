@@ -1,9 +1,13 @@
 """Tests for MCP client and plugin system."""
 
-from oktigent.tools.mcp_client import MCPClient, MCPServerConfig, MCPTool, load_mcp_config
-from oktigent.tools.plugin import load_plugin, discover_plugins, load_all_plugins, create_plugin_template
-from oktigent.tools.registry import ToolRegistry
-
+from okti.tools.mcp_client import MCPClient, MCPServerConfig, MCPTool, load_mcp_config
+from okti.tools.plugin import (
+    create_plugin_template,
+    discover_plugins,
+    load_all_plugins,
+    load_plugin,
+)
+from okti.tools.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # MCP Client tests
@@ -72,7 +76,7 @@ def test_plugin_load(tmp_path):
     plugin_dir.mkdir()
     plugin_file = plugin_dir / "test_plugin.py"
     plugin_file.write_text('''
-from oktigent.tools.registry import ToolDef
+from okti.tools.registry import ToolDef
 
 async def handler(msg: str = "hello") -> str:
     return f"Result: {msg}"
@@ -88,7 +92,7 @@ TOOLS = [
 ]
 ''')
 
-    tools = load_plugin(plugin_file)
+    tools = load_plugin(plugin_file, allow_untrusted=True)
     assert len(tools) == 1
     assert tools[0].name == "test_tool"
     assert tools[0].description == "A test plugin tool"
@@ -101,7 +105,7 @@ def test_plugin_no_tools(tmp_path):
     plugin_file = plugin_dir / "empty_plugin.py"
     plugin_file.write_text("# No tools defined\n")
 
-    tools = load_plugin(plugin_file)
+    tools = load_plugin(plugin_file, allow_untrusted=True)
     assert len(tools) == 0
 
 
@@ -111,7 +115,7 @@ def test_load_all_plugins(tmp_path):
     plugin_dir.mkdir()
     plugin_file = plugin_dir / "my_plugin.py"
     plugin_file.write_text('''
-from oktigent.tools.registry import ToolDef
+from okti.tools.registry import ToolDef
 
 async def handler() -> str:
     return "plugin result"
@@ -126,7 +130,12 @@ TOOLS = [
 ''')
 
     registry = ToolRegistry()
-    count = load_all_plugins(registry, [plugin_dir])
+    count = load_all_plugins(
+        registry,
+        enabled=True,
+        allow_untrusted=True,
+        extra_dirs=[plugin_dir],
+    )
     assert count == 1
     # Tool should be prefixed with plugin name
     tool_names = registry.tool_names()
@@ -150,5 +159,112 @@ def test_plugin_broken_syntax(tmp_path):
     plugin_file = plugin_dir / "broken.py"
     plugin_file.write_text("def broken(\n")  # Syntax error
 
-    tools = load_plugin(plugin_file)
+    tools = load_plugin(plugin_file, allow_untrusted=True)
     assert len(tools) == 0
+
+
+# ---------------------------------------------------------------------------
+# Plugin security tests
+# ---------------------------------------------------------------------------
+
+from okti.tools.plugin import compute_plugin_hash, scan_plugin_ast
+
+
+def _write_plugin(tmp_path, name, body):
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir(exist_ok=True)
+    p = plugin_dir / name
+    p.write_text(body)
+    return p
+
+
+def test_plugin_disabled_by_default(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "safe.py", '''
+from okti.tools.registry import ToolDef
+async def h() -> str: return "ok"
+TOOLS = [ToolDef(name="t", description="d", handler=h)]
+''')
+    registry = ToolRegistry()
+    # enabled=False → no plugins loaded even with correct hash
+    trusted = [compute_plugin_hash(plugin_file)]
+    count = load_all_plugins(registry, enabled=False, trusted_hashes=trusted,
+                              extra_dirs=[plugin_file.parent])
+    assert count == 0
+
+
+def test_plugin_untrusted_hash_rejected(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "untrusted.py", '''
+from okti.tools.registry import ToolDef
+async def h() -> str: return "ok"
+TOOLS = [ToolDef(name="t", description="d", handler=h)]
+''')
+    registry = ToolRegistry()
+    # enabled but no trusted hash → rejected
+    count = load_all_plugins(registry, enabled=True, trusted_hashes=[],
+                              extra_dirs=[plugin_file.parent])
+    assert count == 0
+
+
+def test_plugin_trusted_hash_loads(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "trusted.py", '''
+from okti.tools.registry import ToolDef
+async def h() -> str: return "ok"
+TOOLS = [ToolDef(name="t", description="d", handler=h)]
+''')
+    registry = ToolRegistry()
+    trusted = [compute_plugin_hash(plugin_file)]
+    count = load_all_plugins(registry, enabled=True, trusted_hashes=trusted,
+                              extra_dirs=[plugin_file.parent])
+    assert count == 1
+
+
+def test_plugin_hash_changes_on_edit(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "edit.py", "TOOLS = []\n")
+    h1 = compute_plugin_hash(plugin_file)
+    plugin_file.write_text("TOOLS = []  # edited\n")
+    h2 = compute_plugin_hash(plugin_file)
+    assert h1 != h2
+
+
+def test_scan_flags_subprocess(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "risky.py", '''
+import subprocess
+subprocess.run(["ls"])
+TOOLS = []
+''')
+    findings = scan_plugin_ast(plugin_file)
+    assert any("subprocess" in f for f in findings)
+
+
+def test_scan_flags_eval(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "evil.py", '''
+eval("1+1")
+TOOLS = []
+''')
+    findings = scan_plugin_ast(plugin_file)
+    assert any("eval" in f for f in findings)
+
+
+def test_scan_flags_os_system(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "syscall.py", '''
+import os
+os.system("echo pwned")
+TOOLS = []
+''')
+    findings = scan_plugin_ast(plugin_file)
+    assert any("system" in f for f in findings)
+
+
+def test_scan_clean_plugin(tmp_path):
+    plugin_file = _write_plugin(tmp_path, "clean.py", '''
+from okti.tools.registry import ToolDef
+async def h(x: str) -> str: return x.upper()
+TOOLS = [ToolDef(name="upper", description="d", handler=h)]
+''')
+    findings = scan_plugin_ast(plugin_file)
+    assert findings == []
+
+
+def test_load_nonexistent_plugin(tmp_path):
+    tools = load_plugin(tmp_path / "missing.py", allow_untrusted=True)
+    assert tools == []
