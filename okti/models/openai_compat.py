@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from okti.models.pricing import estimate_cost
 from okti.models.provider import (
     BaseProvider,
     Message,
@@ -32,32 +33,6 @@ _PROVIDER_URLS: dict[str, str] = {
 
 class _ToolUnsupported(Exception):
     """Raised when a provider/model rejects a request because it does not support tool calling."""
-
-
-def estimate_cost(model_name: str, prompt_tokens: int, completion_tokens: int, cache_read: int = 0) -> float:
-    """Estimate USD cost based on model pricing per million tokens."""
-    m = (model_name or "").lower()
-    if ":free" in m or "free" in m:
-        return 0.0
-
-    if "claude-3-7" in m or "claude-3.7" in m or "claude-3-5" in m or "claude-3.5" in m:
-        p_rate, c_rate, cr_rate = 3.0, 15.0, 0.30
-    elif "haiku" in m:
-        p_rate, c_rate, cr_rate = 0.80, 4.0, 0.08
-    elif "gpt-4o-mini" in m or "o3-mini" in m:
-        p_rate, c_rate, cr_rate = 0.15, 0.60, 0.075
-    elif "gpt-4o" in m:
-        p_rate, c_rate, cr_rate = 2.50, 10.0, 1.25
-    elif "deepseek" in m:
-        p_rate, c_rate, cr_rate = 0.14, 0.28, 0.014
-    elif "gemini-2" in m or "gemini-1.5-flash" in m:
-        p_rate, c_rate, cr_rate = 0.10, 0.40, 0.025
-    else:
-        p_rate, c_rate, cr_rate = 0.50, 1.50, 0.10
-
-    uncached_prompt = max(0, prompt_tokens - cache_read)
-    cost = (uncached_prompt * p_rate + cache_read * cr_rate + completion_tokens * c_rate) / 1_000_000.0
-    return round(cost, 6)
 
 
 class OpenAICompatProvider(BaseProvider):

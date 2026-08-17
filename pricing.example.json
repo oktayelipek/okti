@@ -1,0 +1,16 @@
+{
+  "_comment": "USD per 1M tokens. Place at ~/.config/okti/pricing.json to override defaults or add new models.",
+  "_comment_matching": "Keys are substrings matched (case-insensitive) against the model name; first match wins.",
+
+  "claude-3-7":        {"prompt": 3.0,  "completion": 15.0, "cache_read": 0.30},
+  "claude-3.5":        {"prompt": 3.0,  "completion": 15.0, "cache_read": 0.30},
+  "haiku":             {"prompt": 0.80, "completion": 4.0,  "cache_read": 0.08},
+
+  "gpt-4o-mini":       {"prompt": 0.15, "completion": 0.60, "cache_read": 0.075},
+  "gpt-4o":            {"prompt": 2.50, "completion": 10.0, "cache_read": 1.25},
+  "o3-mini":           {"prompt": 0.15, "completion": 0.60, "cache_read": 0.075},
+
+  "deepseek":          {"prompt": 0.14, "completion": 0.28, "cache_read": 0.014},
+  "gemini-2":          {"prompt": 0.10, "completion": 0.40, "cache_read": 0.025},
+  "gemini-1.5-flash":  {"prompt": 0.10, "completion": 0.40, "cache_read": 0.025}
+}
