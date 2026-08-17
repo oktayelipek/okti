@@ -32,6 +32,7 @@ class SlashCommandHandler:
             "/setup": self._setup,
             "/onboard": self._setup,
             "/plan": self._plan,
+            "/budget": self._budget,           # type: ignore[attr-defined]
             "/plans": self._plans,             # type: ignore[attr-defined]
             "/plan-resume": self._plan_resume, # type: ignore[attr-defined]
             "/approve": self._approve,
@@ -703,3 +704,39 @@ async def _plan_resume_wrapper(self, args: str) -> None:
 
 SlashCommandHandler._plans = _plans_wrapper                  # type: ignore[attr-defined]
 SlashCommandHandler._plan_resume = _plan_resume_wrapper      # type: ignore[attr-defined]
+
+
+async def _budget_impl(handler, args: str) -> None:
+    """/budget — show spend/cap, or set a new cap: `/budget 5.00`."""
+    agent = handler.app.agent
+    spent = agent.total_usage.cost_usd
+
+    args = args.strip()
+    if args:
+        try:
+            new_cap = float(args)
+        except ValueError:
+            handler.app.chat_pane.add_status(
+                f"Cannot parse cap: {args!r}. Usage: /budget 5.00", style="bold red"
+            )
+            return
+        if new_cap <= 0:
+            handler.app.config.budget.session_usd_cap = None
+            agent.budget.reset()
+            handler.app.chat_pane.add_status("Budget cap cleared.", style="green")
+        else:
+            handler.app.config.budget.session_usd_cap = new_cap
+            agent.budget.reset()
+            handler.app.chat_pane.add_status(
+                f"Budget cap set to ${new_cap:.2f} (thresholds reset).", style="green"
+            )
+        return
+
+    handler.app.chat_pane.add_assistant_message(agent.budget.summary(spent))
+
+
+async def _budget_wrapper(self, args: str) -> None:
+    await _budget_impl(self, args)
+
+
+SlashCommandHandler._budget = _budget_wrapper                # type: ignore[attr-defined]

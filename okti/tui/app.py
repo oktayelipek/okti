@@ -788,6 +788,10 @@ class OktiApp(App):
                 elif event.type == "compaction":
                     self.chat_pane.add_status(event.content, style="yellow")
 
+                elif event.type == "budget":
+                    style = "bold red" if "exceeded" in event.content else "bold yellow"
+                    self.chat_pane.add_status(event.content, style=style)
+
             logger.debug("_run_agent loop finished: %d events, accumulated %d chars",
                 event_count, len(accumulated_content))
             self.chat_pane.hide_thinking()

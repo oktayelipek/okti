@@ -65,6 +65,8 @@ class AgentLoop:
         self.registry = registry or self._build_default_registry()
         self.permissions = PermissionManager(config, self.registry)
         self.context = ContextManager(config)
+        from okti.agent.budget import BudgetGuard
+        self.budget = BudgetGuard(config)
         self.system_prompt = system_prompt or self._build_system_prompt()
         self.messages: list[Message] = []
         self.total_usage = TokenUsage()
@@ -147,6 +149,24 @@ class AgentLoop:
             risk_level="low",
         ))
 
+    @staticmethod
+    def _budget_message(event: Any) -> str:
+        pct = int(event.threshold_fraction * 100)
+        if event.kind == "warn":
+            return (
+                f"⚠ Budget: ${event.spent_usd:.4f} of ${event.cap_usd:.2f} "
+                f"used ({pct}%). Consider tightening the plan."
+            )
+        if event.kind == "disable_yolo":
+            return (
+                f"⚠ Budget {pct}%: YOLO disabled — every tool call will now "
+                f"require permission (spent ${event.spent_usd:.4f})."
+            )
+        return (
+            f"✗ Budget exceeded at {pct}% (spent ${event.spent_usd:.4f} "
+            f"of ${event.cap_usd:.2f}). Further tool calls will be refused."
+        )
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt with provider-specific template and project memory."""
         provider_name = self.config.default_provider.value if hasattr(self.config.default_provider, "value") else str(self.config.default_provider)
@@ -215,6 +235,17 @@ class AgentLoop:
         """Execute a list of tool calls, check permissions, and record results."""
         results: list[str] = []
         for tc in tool_calls:
+            if self.budget.is_stopped():
+                result = (
+                    f"Budget cap reached (spent ${self.total_usage.cost_usd:.4f}"
+                    f" / ${self.budget.cap() or 0:.2f}). Refusing to execute "
+                    f"{tc.name}. Raise config.budget.session_usd_cap to continue."
+                )
+                self.messages.append(Message(
+                    role=Role.TOOL, content=result, tool_call_id=tc.id,
+                ))
+                results.append(result)
+                continue
             level = self.permissions.check(tc.name)
             if level == PermissionLevel.DENY:
                 result = f"Permission denied: {tc.name}"
@@ -321,6 +352,13 @@ class AgentLoop:
 
             self.total_usage = self.total_usage + turn_usage
 
+            # Budget check runs on every streaming turn as well
+            for bev in self.budget.observe(self.total_usage.cost_usd):
+                yield StreamEvent(
+                    type="budget",
+                    content=self._budget_message(bev),
+                )
+
             # Build the complete assistant message
             assistant_msg = Message(
                 role=Role.ASSISTANT,
@@ -406,6 +444,16 @@ class AgentLoop:
                     sp.attrs["total_tokens"] = response.message.token_usage.total_tokens
                     sp.attrs["cost_usd"] = response.message.token_usage.cost_usd
             self.messages.append(response.message)
+            # Budget tracking runs after every provider response so a
+            # single expensive turn can push us across a threshold.
+            for event in self.budget.observe(self.total_usage.cost_usd):
+                self._emit(
+                    "budget",
+                    kind=event.kind,
+                    spent_usd=event.spent_usd,
+                    cap_usd=event.cap_usd,
+                    fraction=event.threshold_fraction,
+                )
             return response
 
     async def _stream_model(self) -> AsyncIterator[StreamChunk]:

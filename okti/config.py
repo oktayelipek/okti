@@ -84,6 +84,26 @@ class ContextConfig(BaseModel):
     background_max_chars: int = 50_000  # max chars for background context
 
 
+class BudgetConfig(BaseModel):
+    """Session-scoped USD spending cap.
+
+    session_usd_cap  — None disables the cap. When set, okti tracks
+                       cumulative cost across the session and takes
+                       progressively louder action as it approaches
+                       the cap.
+    warn_at          — fraction (0-1) at which a warning is shown.
+    disable_yolo_at  — fraction at which YOLO is forcibly turned off
+                       so a runaway agent has to ask for permission.
+    hard_stop_at     — fraction at which further tool calls are refused
+                       ("budget exceeded"). Set >1 to disable the stop.
+    """
+
+    session_usd_cap: float | None = None
+    warn_at: float = 0.8
+    disable_yolo_at: float = 0.9
+    hard_stop_at: float = 1.0
+
+
 class TelemetryConfig(BaseModel):
     """Tracing / observability settings."""
 
@@ -133,6 +153,9 @@ class OktiConfig(BaseModel):
 
     # Telemetry (in-repo JSONL exporter by default; OTel auto-detected)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+
+    # Budget (session USD cap with tiered enforcement)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
 
 
 # ---------------------------------------------------------------------------
