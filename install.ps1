@@ -1,5 +1,5 @@
 # okti installer for Windows
-# Usage: powershell -c "irm https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.ps1 | iex"
+# Usage: powershell -c "irm https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 | iex"
 # Or:    okti
 
 $ErrorActionPreference = "Stop"

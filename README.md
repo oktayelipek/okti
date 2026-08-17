@@ -11,13 +11,13 @@ One command to install. Works on macOS, Linux, and Windows.
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/oktayelipek/okti/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.ps1 | iex"
+powershell -c "irm https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 | iex"
 ```
 
 ### pip (manual)
@@ -168,8 +168,8 @@ defenses are applied by default:
 ## Development
 
 ```bash
-git clone https://github.com/oktayelipek/oktigent.git
-cd oktigent
+git clone https://github.com/oktayelipek/okti.git
+cd okti
 pip install -e ".[dev]"
 
 # Install pre-commit hooks (ruff, bandit, mypy, secret detection)

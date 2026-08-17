@@ -48,7 +48,7 @@ dev = [
 okti = "okti.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/oktayelipek/oktigent"
+Homepage = "https://github.com/oktayelipek/okti"
 
 [tool.hatch.build.targets.wheel]
 packages = ["okti"]

@@ -119,7 +119,7 @@ class SlashCommandHandler:
 
         try:
             css = THEMES[theme_name]
-            self.app.screen.styles.parse(css)
+            self.app.screen.styles.parse(css, read_from=("user", "theme"))
             self.app.chat_pane.add_status(f"Theme switched to {theme_name.upper()}!", style="bold green")
         except Exception:
             self.app.chat_pane.add_status(f"Theme change applied: {theme_name}", style="green")
@@ -451,11 +451,17 @@ class SlashCommandHandler:
             self.app.chat_pane.add_status(f"Load error: {e}", style="bold red")
 
     async def _refresh(self, args: str) -> None:
-        """Refresh file tree."""
+        """Refresh file tree (feature stubbed pending FileTree mount in OktiApp)."""
+        file_tree = getattr(self.app, "file_tree", None)
+        if file_tree is None:
+            self.app.chat_pane.add_status(
+                "File tree not mounted in this layout.", style="yellow"
+            )
+            return
         try:
-            self.app.file_tree.refresh_tree()
+            file_tree.refresh_tree()
             self.app.chat_pane.add_status("File tree refreshed.", style="green")
-        except Exception as e:
+        except (OSError, AttributeError) as e:
             self.app.chat_pane.add_status(f"Refresh error: {e}", style="bold red")
 
     async def _git(self, args: str) -> None:

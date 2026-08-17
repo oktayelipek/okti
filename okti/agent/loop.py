@@ -67,8 +67,8 @@ class AgentLoop:
 
         # Session tracking
         self.session_id: str | None = None
-        self._current_plan = None  # Set by plan.py when a plan is generated
-        self.mcp_client = None  # MCP client for external tools
+        self._current_plan: Any = None  # Set by plan.py when a plan is generated
+        self.mcp_client: Any = None  # MCPClient; typed loosely to avoid circular import
 
         # Permission flow (TUI sets these before signaling the event)
         self._permission_event: asyncio.Event | None = None
@@ -268,9 +268,8 @@ class AgentLoop:
                         except (_json.JSONDecodeError, ValueError):
                             logger.warning("Failed to parse tool call args: %s", raw[:100])
                             tc.arguments = {"_raw": raw}
-                # Clean up internal attribute
-                if hasattr(tc, "_raw_args"):
-                    del tc._raw_args
+                # Reset the streaming JSON buffer for future turns
+                tc._raw_args = ""
 
             self.total_usage = self.total_usage + turn_usage
 

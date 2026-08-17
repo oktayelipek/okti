@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # okti installer for macOS/Linux
-# Usage: curl -fsSL https://raw.githubusercontent.com/oktayelipek/oktigent/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/oktayelipek/okti/main/install.sh | bash
 
 set -e
 

@@ -40,6 +40,9 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    # Buffer for streaming providers that emit JSON arguments piecewise.
+    # Populated during stream_chat, consumed and cleared on turn end.
+    _raw_args: str = ""
 
     def arguments_json(self) -> str:
         """Serialize arguments to JSON string."""
@@ -200,10 +203,9 @@ class BaseProvider(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream a chat response."""
-        ...
-        yield  # Make this a generator
-        # Subclasses override this completely
+        """Stream a chat response. Subclasses override this completely."""
+        if False:  # pragma: no cover — this exists only to mark the method as an async generator
+            yield StreamChunk()
 
     @abstractmethod
     def list_models(self) -> list[str]:

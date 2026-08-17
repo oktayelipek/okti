@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 import httpx
@@ -19,7 +19,7 @@ _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 async def retry_with_backoff(
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     *args,
     max_retries: int = 3,
     base_delay: float = 1.0,
@@ -38,7 +38,7 @@ async def retry_with_backoff(
         base_delay: Initial delay in seconds
         max_delay: Maximum delay in seconds
     """
-    last_exception = None
+    last_exception: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             return await func(*args, **kwargs)
@@ -74,4 +74,5 @@ async def retry_with_backoff(
             )
             await asyncio.sleep(delay)
 
-    raise last_exception  # type: ignore[misc]
+    assert last_exception is not None
+    raise last_exception

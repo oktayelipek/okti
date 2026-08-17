@@ -106,7 +106,7 @@ class FileTree(Static):
         """Refresh the file tree."""
         try:
             tree = self.query_one("#file-tree-view", Tree)
-            tree.root.children.clear()
+            tree.root.remove_children()
             tree.root.label = str(self.workspace.name)
             self._build_tree(tree.root, self.workspace)
         except Exception:
@@ -140,7 +140,7 @@ class DiffViewer(Static):
         ))
 
         if not diff:
-            self.update(Static("No changes"))
+            self.update("No changes")
             return
 
         # Build colored diff

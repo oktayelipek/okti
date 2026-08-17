@@ -218,7 +218,7 @@ class MCPClient:
     async def _call_sse(self, server_name: str, tool_name: str, arguments: dict) -> str:
         """Call a tool via SSE transport."""
         client = self._connections.get(server_name)
-        if not client:
+        if not isinstance(client, httpx.AsyncClient):
             return f"Error: SSE client for {server_name} not connected"
 
         resp = await client.post(
