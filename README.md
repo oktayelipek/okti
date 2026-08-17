@@ -345,10 +345,8 @@ Recently shipped:
       emits a completion script to stdout.
 - [x] **Coverage → 70 %+.** 410 tests, 70 % line coverage.
 
-Still open — PRs welcome:
-
-- [ ] **Web UI.** FastAPI + WebSocket front-end reusing the same
-      `AgentLoop` core; multi-user session support.
+Nothing else on the near-term roadmap. Open an issue if there's a
+capability you'd like to see prioritized.
 
 ---
 
