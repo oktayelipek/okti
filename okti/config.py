@@ -84,6 +84,13 @@ class ContextConfig(BaseModel):
     background_max_chars: int = 50_000  # max chars for background context
 
 
+class TelemetryConfig(BaseModel):
+    """Tracing / observability settings."""
+
+    enabled: bool = False
+    export_path: Path | None = None  # defaults to $OKTI_WORKSPACE/.okti/traces.jsonl
+
+
 class PluginsConfig(BaseModel):
     """Plugin loading & trust settings.
 
@@ -123,6 +130,9 @@ class OktiConfig(BaseModel):
 
     # Plugins
     plugins: PluginsConfig = Field(default_factory=PluginsConfig)
+
+    # Telemetry (in-repo JSONL exporter by default; OTel auto-detected)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
 
 # ---------------------------------------------------------------------------

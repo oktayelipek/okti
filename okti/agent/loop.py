@@ -50,6 +50,12 @@ class AgentLoop:
         system_prompt: str | None = None,
     ):
         self.config = config
+
+        # Tracing: honour config.telemetry (env var already wired at import)
+        if config.telemetry.enabled:
+            from okti.telemetry import get_tracer
+            get_tracer().enable(export_path=config.telemetry.export_path)
+
         try:
             self.provider: BaseProvider = create_provider(config)
         except (ValueError, KeyError, ImportError) as e:
@@ -375,21 +381,32 @@ class AgentLoop:
 
     async def _call_model(self) -> ProviderResponse:
         """Non-streaming model call."""
+        from okti.telemetry import get_tracer
+
         provider_config = self.config.providers.get(self.config.default_provider.value)
         max_tokens = provider_config.max_tokens if provider_config else 8192
         temperature = provider_config.temperature if provider_config else 0.0
 
-        response = await self.provider.chat(
-            messages=self.messages,
-            tools=self.registry.to_schemas(),
+        with get_tracer().span(
+            "provider.chat",
+            provider=self.config.default_provider.value,
             model=self.config.default_model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        if response.message.token_usage:
-            self.total_usage = self.total_usage + response.message.token_usage
-        self.messages.append(response.message)
-        return response
+            message_count=len(self.messages),
+        ) as sp:
+            response = await self.provider.chat(
+                messages=self.messages,
+                tools=self.registry.to_schemas(),
+                model=self.config.default_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            if response.message.token_usage:
+                self.total_usage = self.total_usage + response.message.token_usage
+                if sp is not None:
+                    sp.attrs["total_tokens"] = response.message.token_usage.total_tokens
+                    sp.attrs["cost_usd"] = response.message.token_usage.cost_usd
+            self.messages.append(response.message)
+            return response
 
     async def _stream_model(self) -> AsyncIterator[StreamChunk]:
         """Streaming model call with fallback."""

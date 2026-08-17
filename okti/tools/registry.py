@@ -70,12 +70,19 @@ class ToolRegistry:
         if not tool.handler:
             return f"Error: Tool '{name}' has no handler"
 
-        try:
-            result = await tool.handler(**arguments)
-            return result
-        except Exception as e:
-            logger.exception("Tool %s raised an error", name)
-            return f"Error executing {name}: {type(e).__name__}: {e}"
+        from okti.telemetry import get_tracer
+        with get_tracer().span(
+            f"tool.{name}",
+            tool=name,
+            risk=tool.risk_level,
+            arg_count=len(arguments),
+        ):
+            try:
+                result = await tool.handler(**arguments)
+                return result
+            except Exception as e:
+                logger.exception("Tool %s raised an error", name)
+                return f"Error executing {name}: {type(e).__name__}: {e}"
 
     def get_risk_level(self, name: str) -> str:
         tool = self._tools.get(name)

@@ -27,6 +27,14 @@ class PermissionManager:
 
         Priority: session override > config rules > tool risk level > default (ASK)
         """
+        from okti.telemetry import get_tracer
+        with get_tracer().span("permission.check", tool=tool_name) as sp:
+            level = self._check_inner(tool_name)
+            if sp is not None:
+                sp.attrs["decision"] = level.value
+            return level
+
+    def _check_inner(self, tool_name: str) -> PermissionLevel:
         # Yolo mode bypasses everything
         if self.config.permissions.yolo:
             return PermissionLevel.ALLOW
