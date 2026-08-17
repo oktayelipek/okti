@@ -265,33 +265,36 @@ class ToolDock(Static):
 
     def render(self) -> Text:
         from okti.tui.animations import BRAILLE_SPINNER
+        # Clean palette: text #cdd6f4, muted #6c7086, accent #cba6f7,
+        # cost/highlight #f9e2af, git #a6e3a1
+        MUTED = "#6c7086"
+        TEXT = "#cdd6f4"
+        ACCENT = "#cba6f7"
+        HIGHLIGHT = "#f9e2af"
+        GIT = "#a6e3a1"
+
         t = Text()
 
-        # 1. Cyberpunk left bracket & brand
-        t.append("▓▒░ ", style="bold #ff2a6d")
-        t.append("OKTI", style="bold #f9f871")
-        t.append(" ▸ ", style="dim #d900ff")
+        # 1. Brand
+        t.append("okti", style=f"bold {ACCENT}")
+        t.append("  ·  ", style=MUTED)
 
         # 2. Model
-        m_str = self.model_text or "OFFLINE"
+        m_str = self.model_text or "offline"
         if "/" in m_str:
-            parts = m_str.split("/")
-            m_name = parts[-1]
-            display_model = f"◈ {m_name.strip()}"
-        else:
-            display_model = f"◈ {m_str}"
-        t.append(display_model, style="bold #05d9e8")
-        t.append(" ▸ ", style="dim #d900ff")
+            m_str = m_str.split("/")[-1].strip()
+        t.append(m_str, style=TEXT)
+        t.append("  ·  ", style=MUTED)
 
         # 3. Working directory
         if self.short_cwd:
-            t.append(f"▪ {self.short_cwd}", style="#00f0ff")
-            t.append(" ▸ ", style="dim #d900ff")
+            t.append(self.short_cwd, style=MUTED)
+            t.append("  ·  ", style=MUTED)
 
         # 4. Git branch
         if self.git_info:
-            t.append(self.git_info, style="bold #ff006e")
-            t.append(" ▸ ", style="dim #d900ff")
+            t.append(self.git_info, style=GIT)
+            t.append("  ·  ", style=MUTED)
 
         # 5. Context window
         pct = (self.tokens_used / max(self.max_tokens, 1)) * 100
@@ -299,21 +302,19 @@ class ToolDock(Static):
             limit_s = f"{self.max_tokens//1_000_000}M"
         else:
             limit_s = f"{self.max_tokens//1000}k"
-
-        ctx_info = f"⬢ {pct:.1f}%/{limit_s}"
-        t.append(ctx_info, style="#d900ff")
-        t.append(" ▸ ", style="dim #d900ff")
+        t.append(f"{pct:.1f}%/{limit_s}", style=MUTED)
+        t.append("  ·  ", style=MUTED)
 
         # 6. Cost
         if self.cost_usd == 0.0:
-            cost_s = "¤0.00"
+            cost_s = "$0.00"
         elif self.cost_usd < 0.01:
-            cost_s = f"¤{self.cost_usd:.4f}"
+            cost_s = f"${self.cost_usd:.4f}"
         else:
-            cost_s = f"¤{self.cost_usd:.2f}"
-        t.append(cost_s, style="bold #f9f871")
+            cost_s = f"${self.cost_usd:.2f}"
+        t.append(cost_s, style=HIGHLIGHT)
 
-        # 7. Dynamic line and Task/Status at the right (─────── Task ─╮)
+        # 7. Right-aligned status
         status_disp = ""
         if self.state in ("thinking", "tool"):
             sp = BRAILLE_SPINNER[self._spinner_idx]
@@ -323,16 +324,12 @@ class ToolDock(Static):
         elif self.current_task and self.current_task != "Ready":
             status_disp = f" {self.current_task} "
 
-        # Compute remaining terminal width
         current_len = len(t.plain)
         width = self.size.width or 100
-        avail = max(3, width - current_len - len(status_disp) - 4)
-        line_filler = "─" * avail
-
-        t.append(f" {line_filler}", style="#ff2a6d")
+        avail = max(3, width - current_len - len(status_disp) - 2)
+        t.append(" " * avail)
         if status_disp:
-            t.append(status_disp, style="bold #f9f871")
-        t.append("░▓", style="bold #ff2a6d")
+            t.append(status_disp, style=ACCENT)
 
         return t
 
@@ -433,11 +430,14 @@ def _summarize_args(args: dict) -> str:
 class OktiApp(App):
     """okti TUI application."""
 
+    # Clean palette (matches onboarding):
+    #   #16161e bg     #1e1e2a panel   #cdd6f4 text
+    #   #6c7086 muted  #cba6f7 accent  #f38ba8 error
     CSS = """
     Screen {
         layout: vertical;
-        background: #0a0014;
-        color: #05d9e8;
+        background: #16161e;
+        color: #cdd6f4;
     }
     #main-area {
         height: 1fr;
@@ -446,11 +446,11 @@ class OktiApp(App):
     #sidebar {
         width: 28;
         height: 1fr;
-        background: #14002b;
-        border-right: solid #ff2a6d;
+        background: #1e1e2a;
+        border-right: solid #313244;
         padding: 1;
         overflow-y: auto;
-        color: #05d9e8;
+        color: #cdd6f4;
     }
     #sidebar.-hidden {
         display: none;
@@ -460,45 +460,47 @@ class OktiApp(App):
         width: 1fr;
         padding: 1 2;
         overflow-y: auto;
-        background: #0a0014;
+        background: #16161e;
     }
     #command-suggestions {
         display: none;
         max-height: 8;
-        background: #14002b;
-        border: round #ff2a6d;
-        color: #f9f871;
+        background: #1e1e2a;
+        border: round #313244;
+        color: #cdd6f4;
         margin: 0 2;
     }
     #bottom-container {
         dock: bottom;
         height: auto;
         layout: vertical;
-        background: #0a0014;
+        background: #16161e;
+        padding: 1 0 0 0;
     }
     #input-bar {
         height: 3;
-        margin: 0 1 0 1;
+        margin: 0 2 1 2;
         padding: 0 1;
-        border: round #ff2a6d;
-        background: #14002b;
-        color: #05d9e8;
+        border: tall #313244;
+        background: #1e1e2a;
+        color: #cdd6f4;
     }
     #input-bar:focus {
-        border: round #f9f871;
-        background: #1a0033;
+        border: tall #cba6f7;
+        background: #1e1e2a;
     }
     #tool-dock {
         height: 1;
         background: transparent;
-        margin: 0 1 0 1;
-        padding: 0;
+        margin: 0 2 1 2;
+        padding: 0 1;
         overflow: hidden;
+        color: #6c7086;
     }
     Footer {
         height: 1;
-        background: #14002b;
-        color: #05d9e8;
+        background: #16161e;
+        color: #6c7086;
         margin: 0;
     }
     .assistant-message {
@@ -516,8 +518,8 @@ class OktiApp(App):
         Binding("ctrl+b", "toggle_sidebar", "Sidebar"),
     ]
 
-    TITLE = "OKTI"
-    SUB_TITLE = "▓▒░ neural code interface ░▒▓"
+    TITLE = "okti"
+    SUB_TITLE = "agentic coding for the terminal"
 
     def __init__(
         self,
@@ -544,10 +546,12 @@ class OktiApp(App):
         m_name = self.config.default_model
         self.chat_pane = ChatPane(provider_name=p_name, model_name=m_name, id="chat")
 
-        # Sidebar (file tree) + chat side-by-side. Sidebar is togglable
-        # via Ctrl+B; hidden by default on narrow terminals.
+        # Sidebar (file tree) + chat side-by-side. Hidden by default —
+        # bring it back with Ctrl+B or set `show_sidebar = true` in config.
         from okti.tui.widgets import FileTree
         self.file_tree = FileTree(id="sidebar")
+        if not self.config.show_sidebar:
+            self.file_tree.add_class("-hidden")
         with Horizontal(id="main-area"):
             yield self.file_tree
             yield self.chat_pane
@@ -559,7 +563,7 @@ class OktiApp(App):
         # Bottom container: input prompt + HUD telemetry bar + Footer
         with Vertical(id="bottom-container"):
             self.input_bar = Input(
-                placeholder="Type a message or / for commands...",
+                placeholder="Ask anything, or / for commands",
                 id="input-bar",
             )
             yield self.input_bar
@@ -843,6 +847,47 @@ class OktiApp(App):
     def action_toggle_sidebar(self) -> None:
         """Ctrl+B: hide/show the file-tree sidebar."""
         self.file_tree.toggle_class("-hidden")
+
+    def on_key(self, event: Any) -> None:
+        """Route Up/Down/Esc from the input bar to the slash suggestion list.
+
+        While the suggestion list is visible and focus is on the input bar,
+        Down moves focus into the list at the top entry (Up jumps to the
+        bottom). Escape closes the list and hands focus back to the input.
+        Once inside the list, arrow keys navigate normally and Enter picks
+        the option via the existing OptionSelected handler.
+        """
+        if not getattr(self, "suggestions_box", None):
+            return
+        if not self.suggestions_box.display:
+            return
+        input_bar = getattr(self, "input_bar", None)
+        if input_bar is None or not input_bar.has_focus:
+            return
+        if event.key == "down":
+            self.suggestions_box.focus()
+            self.suggestions_box.highlighted = 0
+            event.stop()
+        elif event.key == "up":
+            self.suggestions_box.focus()
+            last = self.suggestions_box.option_count - 1
+            self.suggestions_box.highlighted = max(last, 0)
+            event.stop()
+        elif event.key == "escape":
+            self.suggestions_box.display = False
+            event.stop()
+
+    def on_click(self, event: Any) -> None:
+        """Any click that isn't consumed by a child widget refocuses the input.
+
+        Clicks on interactive widgets (buttons, inputs, radios, tree nodes) are
+        handled by those widgets first, so this only fires for background /
+        chat-transcript clicks — turning the whole app into a big "focus my
+        prompt" surface.
+        """
+        input_bar = getattr(self, "input_bar", None)
+        if input_bar is not None and not input_bar.has_focus:
+            input_bar.focus()
 
     def action_clear_chat(self) -> None:
         self.chat_pane.remove_children()

@@ -147,6 +147,7 @@ class OktiConfig(BaseModel):
     # TUI
     theme: str = "monokai"
     show_token_usage: bool = True
+    show_sidebar: bool = False  # FileTree sidebar; toggle at runtime with Ctrl+B
 
     # Sessions
     auto_save: bool = True  # auto-save after each assistant turn

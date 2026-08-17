@@ -72,7 +72,8 @@ async def test_streamed_response_rendered_and_scrolled(monkeypatch):
         default_provider=ProviderID.OPENROUTER,
         default_model="mock-model",
     )
-    long_text = "Selam! " * 40  # ~280 chars, wraps to several lines
+    # Enough text to overflow a 24-row viewport regardless of banner size.
+    long_text = ("Selam! " * 15 + "\n") * 8
 
     app = OktiApp(config=config)
     app.agent.provider = ChunkedStreamProvider(long_text)

@@ -94,27 +94,34 @@ class AnimatedAsciiBanner(Static):
         self.refresh()
 
     def render(self) -> Text:
-        palette = GRADIENT_PALETTES[self._frame % len(GRADIENT_PALETTES)]
-        lines = ASCII_LOGO.strip().splitlines()
+        # Clean palette: soft purple accent, muted text, no animation shimmer.
+        # Keep the ASCII logo — draw it in a single accent color for a clean,
+        # brand-recognizable header (no rainbow shimmer).
+        ACCENT = "#cba6f7"
+        TEXT = "#cdd6f4"
+        MUTED = "#6c7086"
 
         out = Text()
         out.append("\n")
-        for idx, line in enumerate(lines):
-            color = palette[idx % len(palette)]
-            out.append(" " + line + "\n", style=f"bold {color}")
+        # Only the block letters, not the tagline row from ASCII_LOGO
+        lines = ASCII_LOGO.strip().splitlines()
+        for line in lines:
+            if "NEURAL CODE" in line:
+                continue  # drop the old cyberpunk tagline row
+            out.append(" " + line + "\n", style=f"bold {ACCENT}")
+        out.append("\n")
+        out.append("  Agentic coding for the terminal.\n\n", style=MUTED)
 
-        out.append("\n  ▓▒░ ", style="bold #ff2a6d")
-        out.append("JACK IN // AUTONOMOUS CODE AGENT FOR NIGHT CITY BUILDERS", style="bold #f9f871")
-        out.append(" ░▒▓\n\n", style="bold #ff2a6d")
         if self.model_name:
-            out.append("  ▶ NEURAL LINK: ", style="dim #05d9e8")
+            label = self.model_name
             if self.provider_name:
-                out.append(f"{self.provider_name} / ", style="bold #d900ff")
-            out.append(f"{self.model_name}\n", style="bold #00f0ff")
-        out.append(f"  ✦ {self._quote}\n\n", style="dim italic #ff2a6d")
-        out.append("  >_ Type a prompt or press ", style="dim #05d9e8")
-        out.append("/", style="bold #f9f871")
-        out.append(" to hack the mainframe (/models, /theme, /review)\n", style="dim #05d9e8")
+                label = f"{self.provider_name} / {self.model_name}"
+            out.append("  Model: ", style=MUTED)
+            out.append(f"{label}\n", style=TEXT)
+        out.append(f"  {self._quote}\n\n", style=f"italic {MUTED}")
+        out.append("  Type a message, or press ", style=MUTED)
+        out.append("/", style=f"bold {ACCENT}")
+        out.append(" for commands.\n", style=MUTED)
         return out
 
 class ThinkingIndicator(Static):
