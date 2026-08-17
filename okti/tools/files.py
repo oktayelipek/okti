@@ -90,6 +90,9 @@ def _write_file_sync(path: str, content: str) -> str:
     except ValueError as e:
         return f"Error: {e}"
     resolved.parent.mkdir(parents=True, exist_ok=True)
+    from okti.tools.history import get_history
+    prev = resolved.read_text(encoding="utf-8", errors="replace") if resolved.exists() else ""
+    get_history().push({str(resolved): prev}, label=f"write_file {path}")
     resolved.write_text(content, encoding="utf-8")
     return f"File written: {path} ({len(content)} chars, {content.count(chr(10)) + 1} lines)"
 
@@ -119,6 +122,8 @@ def _edit_file_sync(path: str, old_string: str, new_string: str) -> str:
             if count > 1:
                 return f"Error: old_string found {count} times in {path}. Provide more context to make it unique."
             new_content = content_norm.replace(old_norm, new_norm, 1)
+            from okti.tools.history import get_history
+            get_history().push({str(resolved): content}, label=f"edit_file {path}")
             resolved.write_text(new_content, encoding="utf-8")
             return f"File edited (normalized line endings): {path}"
         return f"Error: old_string not found in {path}. No changes made."
@@ -128,6 +133,8 @@ def _edit_file_sync(path: str, old_string: str, new_string: str) -> str:
         return f"Error: old_string found {count} times in {path}. Provide more context to make it unique."
 
     new_content = content.replace(old_string, new_string, 1)
+    from okti.tools.history import get_history
+    get_history().push({str(resolved): content}, label=f"edit_file {path}")
     resolved.write_text(new_content, encoding="utf-8")
 
     # Generate diff for display
@@ -157,7 +164,8 @@ def _multi_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
     if not resolved.exists():
         return f"Error: File not found: {path}"
 
-    content = resolved.read_text(encoding="utf-8", errors="replace")
+    original = resolved.read_text(encoding="utf-8", errors="replace")
+    content = original
     results = []
 
     for i, edit in enumerate(edits):
@@ -177,6 +185,8 @@ def _multi_edit_sync(path: str, edits: list[dict[str, str]]) -> str:
         content = content.replace(old, new, 1)
         results.append(f"Edit {i + 1}: applied")
 
+    from okti.tools.history import get_history
+    get_history().push({str(resolved): original}, label=f"multi_edit {path}")
     resolved.write_text(content, encoding="utf-8")
     return f"File: {path} — {len(results)} edits applied\n" + "\n".join(results)
 
@@ -241,6 +251,14 @@ def _multi_file_edit_sync(operations: list[dict]) -> str:
                 f"Aborting all edits — no files were modified."
             )
         plans.append((resolved, original, content))
+
+    # Register full pre-edit state with the history stack so a single
+    # undo_edit call reverts every file in the batch together.
+    from okti.tools.history import get_history
+    get_history().push(
+        {str(r): orig for r, orig, _ in plans},
+        label=f"multi_file_edit {len(plans)}f",
+    )
 
     # Phase 2 — write with rollback on failure
     written: list[tuple[Path, str]] = []  # (path, original) for rollback
@@ -448,6 +466,40 @@ async def list_dir(path: str = ".") -> str:
     return await asyncio.to_thread(_list_dir_sync, path)
 
 
+def _undo_edit_sync() -> str:
+    from okti.tools.history import get_history
+    snap = get_history().undo()
+    if snap is None:
+        return "Nothing to undo."
+    names = ", ".join(Path(p).name for p in snap.files)
+    return (
+        f"Undid: {snap.label or 'edit'} ({len(snap.files)} file(s) restored: {names}). "
+        f"Undo depth: {get_history().undo_depth()}, redo depth: {get_history().redo_depth()}."
+    )
+
+
+def _redo_edit_sync() -> str:
+    from okti.tools.history import get_history
+    snap = get_history().redo()
+    if snap is None:
+        return "Nothing to redo."
+    names = ", ".join(Path(p).name for p in snap.files)
+    return (
+        f"Redid: {snap.label or 'edit'} ({len(snap.files)} file(s) restored: {names}). "
+        f"Undo depth: {get_history().undo_depth()}, redo depth: {get_history().redo_depth()}."
+    )
+
+
+async def undo_edit() -> str:
+    """Undo the most recent file edit (write/edit/multi/multi_file)."""
+    return await asyncio.to_thread(_undo_edit_sync)
+
+
+async def redo_edit() -> str:
+    """Redo the most recently undone edit."""
+    return await asyncio.to_thread(_redo_edit_sync)
+
+
 def register_file_tools(registry: ToolRegistry) -> None:
     """Register all file tools with the registry."""
 
@@ -559,6 +611,26 @@ def register_file_tools(registry: ToolRegistry) -> None:
             "required": ["operations"],
         },
         handler=multi_file_edit,
+        risk_level="medium",
+    ))
+
+    registry.register(ToolDef(
+        name="undo_edit",
+        description=(
+            "Revert the most recent file edit (write_file, edit_file, "
+            "multi_edit, or multi_file_edit). The undone batch moves to a "
+            "redo stack. Session-scoped, in-memory, bounded to 50 entries."
+        ),
+        parameters={"type": "object", "properties": {}},
+        handler=undo_edit,
+        risk_level="medium",
+    ))
+
+    registry.register(ToolDef(
+        name="redo_edit",
+        description="Replay the most recently undone edit forward.",
+        parameters={"type": "object", "properties": {}},
+        handler=redo_edit,
         risk_level="medium",
     ))
 

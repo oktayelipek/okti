@@ -102,10 +102,7 @@ class Plan:
         pending = len(self.pending_tasks())
         tokens = self.total_estimated_tokens()
         cost = self.estimated_cost_usd(model_name)
-        if cost < 0.01:
-            cost_str = f"${cost:.4f}"
-        else:
-            cost_str = f"${cost:.2f}"
+        cost_str = f"${cost:.4f}" if cost < 0.01 else f"${cost:.2f}"
         return (
             f"{pending} pending task(s) · ~{tokens:,} tokens · "
             f"~{cost_str} on {model_name}"

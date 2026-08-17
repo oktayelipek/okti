@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pytest
 
 from okti.tools.bash import _is_denied, _resolve_cwd, run_command
-
 
 # ---------------------------------------------------------------------------
 # Denylist
