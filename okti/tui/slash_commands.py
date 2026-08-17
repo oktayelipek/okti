@@ -144,6 +144,11 @@ class SlashCommandHandler:
         task = pending[0]
         from okti.agent.plan import TaskStatus, build_task_prompt
         task.status = TaskStatus.IN_PROGRESS
+        # Surface the running-total cost preview so the user can bail out early.
+        self.app.chat_pane.add_status(
+            f"Estimate for remaining plan: {plan.cost_summary(self.app.config.default_model)}",
+            style="dim cyan",
+        )
         self.app.chat_pane.add_status(f"Executing task [{task.id}]: {task.title}...", style="bold cyan")
         prompt = build_task_prompt(task, plan.summary)
         self.app.chat_pane.add_user_message(f"Execute plan task: {task.title}")
@@ -196,6 +201,8 @@ class SlashCommandHandler:
                         lines.append(f"  {task.description[:120]}")
                     if task.files_involved:
                         lines.append(f"  Files: {', '.join(task.files_involved)}")
+                # Cost preview so the user knows the ballpark before approving.
+                lines.append(f"\n**Estimate**: {plan.cost_summary(self.app.config.default_model)}")
                 lines.append("\nType `/approve` to approve and execute, or edit the plan.")
 
                 self.app.chat_pane.add_assistant_message("\n".join(lines))

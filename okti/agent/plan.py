@@ -48,6 +48,18 @@ class Task:
             "result": self.result,
         }
 
+    def estimated_tokens(self) -> int:
+        """Rough token estimate for executing this task.
+
+        Heuristic: fixed overhead for the task prompt (system + boilerplate),
+        plus a per-file allowance (read + edit), plus 4× description chars
+        (loose token/char ratio, biased toward code output).
+        """
+        base_prompt = 800
+        per_file = 1500
+        description_tokens = max(0, len(self.description)) * 4 // 3
+        return base_prompt + per_file * max(1, len(self.files_involved)) + description_tokens
+
 
 @dataclass
 class Plan:
@@ -69,6 +81,35 @@ class Plan:
 
     def completed_count(self) -> int:
         return sum(1 for t in self.tasks if t.status == TaskStatus.COMPLETED)
+
+    def total_estimated_tokens(self, only_pending: bool = True) -> int:
+        """Sum of per-task token estimates. Split roughly 30/70 prompt/completion."""
+        pool = self.pending_tasks() if only_pending else self.tasks
+        return sum(t.estimated_tokens() for t in pool)
+
+    def estimated_cost_usd(self, model_name: str, only_pending: bool = True) -> float:
+        """Estimate USD cost to execute (remaining) tasks with the given model."""
+        from okti.models.pricing import estimate_cost
+
+        total = self.total_estimated_tokens(only_pending=only_pending)
+        # Rough split: 30% prompt, 70% completion. Tune once we have telemetry.
+        prompt_tokens = int(total * 0.30)
+        completion_tokens = total - prompt_tokens
+        return estimate_cost(model_name, prompt_tokens, completion_tokens)
+
+    def cost_summary(self, model_name: str) -> str:
+        """Human-readable cost preview for /approve confirmation."""
+        pending = len(self.pending_tasks())
+        tokens = self.total_estimated_tokens()
+        cost = self.estimated_cost_usd(model_name)
+        if cost < 0.01:
+            cost_str = f"${cost:.4f}"
+        else:
+            cost_str = f"${cost:.2f}"
+        return (
+            f"{pending} pending task(s) · ~{tokens:,} tokens · "
+            f"~{cost_str} on {model_name}"
+        )
 
 
 def build_plan_prompt(scope: str, codebase_context: str = "") -> str:
