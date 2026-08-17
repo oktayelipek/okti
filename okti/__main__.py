@@ -106,6 +106,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Print the resolved system prompt and the file it came from, then exit.",
     )
     parser.add_argument(
+        "--install-completions",
+        type=str,
+        default=None,
+        choices=("bash", "zsh", "fish"),
+        metavar="SHELL",
+        help="Print a completion script for the given shell to stdout, then exit.",
+    )
+    parser.add_argument(
         "--serve",
         action="store_true",
         help="Run as an HTTP server. Requires `pip install okti[server]`. "
@@ -134,8 +142,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     is_tui = not (args.prompt or args.non_interactive
-                  or args.print_prompt or args.serve)
+                  or args.print_prompt or args.serve
+                  or args.install_completions)
     _configure_logging(args.verbose, tui_mode=is_tui)
+
+    if args.install_completions:
+        from okti.completions import get_completion_script
+        print(get_completion_script(args.install_completions), end="")
+        return
 
     if args.print_prompt:
         _print_prompt(args)
