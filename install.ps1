@@ -11,10 +11,8 @@ $BIN_DIR = "$env:LOCALAPPDATA\okti\bin"
 
 function Write-Header {
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║        okti installer             ║" -ForegroundColor Cyan
-    Write-Host "  ║  Agentic coding tool for the terminal ║" -ForegroundColor Cyan
-    Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "  >>>  OKTI  installer  <<<" -ForegroundColor Cyan
+    Write-Host "  neural code interface for the terminal" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -62,23 +60,28 @@ function Install-Python {
 
 function Install-Okti {
     Write-Host "[*] Installing okti..." -ForegroundColor Cyan
-    
-    # Ensure pip is available
-    try {
-        python -m pip --version | Out-Null
-    } catch {
-        Write-Host "[*] Upgrading pip..." -ForegroundColor Yellow
-        python -m pip install --upgrade pip 2>&1 | Out-Null
+
+    try { python -m pip install --upgrade pip 2>&1 | Out-Null } catch {}
+
+    $gitSource = "git+https://github.com/oktayelipek/okti.git@main"
+    $sources = @("okti", $gitSource)
+
+    foreach ($src in $sources) {
+        python -m pip install -U $src 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[+] okti installed from $src" -ForegroundColor Green
+            return $true
+        }
+        python -m pip install -U --user $src 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[+] okti installed (user) from $src" -ForegroundColor Green
+            return $true
+        }
     }
-    
-    # Install okti
-    $result = python -m pip install -U okti 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[!] pip install failed. Trying with --user flag..." -ForegroundColor Yellow
-        python -m pip install -U --user okti 2>&1
-    }
-    
-    return $LASTEXITCODE -eq 0
+
+    Write-Host "[!] Both PyPI and GitHub installs failed." -ForegroundColor Red
+    Write-Host "    Try manually: pip install --user $gitSource" -ForegroundColor Gray
+    return $false
 }
 
 function Add-ToPath {

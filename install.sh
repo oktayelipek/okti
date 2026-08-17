@@ -17,31 +17,29 @@ NC='\033[0m'
 
 print_header() {
     echo ""
-    echo -e "${CYAN}  ╔══════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}  ║        okti installer             ║${NC}"
-    echo -e "${CYAN}  ║  Agentic coding tool for the terminal ║${NC}"
-    echo -e "${CYAN}  ╚══════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}  ▓▒░  OKTI  installer  ░▒▓${NC}"
+    echo -e "${CYAN}  neural code interface for the terminal${NC}"
     echo ""
 }
 
 check_python() {
-    local cmd=""
-    if command -v python3 &>/dev/null; then
-        cmd="python3"
-    elif command -v python &>/dev/null; then
-        cmd="python"
-    else
-        return 1
-    fi
-    
-    local version=$($cmd --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
-    local major=$(echo $version | cut -d. -f1)
-    local minor=$(echo $version | cut -d. -f2)
-    
-    if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
-        echo "$cmd"
-        return 0
-    fi
+    # Try version-suffixed binaries first (python3.13, python3.12, python3.11),
+    # then fall back to python3 / python.
+    local candidates=(python3.13 python3.12 python3.11 python3 python)
+    for cmd in "${candidates[@]}"; do
+        if ! command -v "$cmd" &>/dev/null; then
+            continue
+        fi
+        local version major minor
+        version=$("$cmd" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+        [ -z "$version" ] && continue
+        major=${version%.*}
+        minor=${version#*.}
+        if [ "$major" -ge 3 ] 2>/dev/null && [ "$minor" -ge 11 ] 2>/dev/null; then
+            echo "$cmd"
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -76,31 +74,80 @@ install_python() {
 }
 
 install_okti() {
-    local python_cmd=$(check_python) || {
+    # NOTE: `local var=$(cmd)` masks the exit status of `cmd` because
+    # `local` itself always returns 0. Declare first, then assign.
+    local python_cmd
+    python_cmd=$(check_python)
+    if [ -z "$python_cmd" ]; then
         install_python
-        python_cmd=$(check_python) || {
+        python_cmd=$(check_python)
+        if [ -z "$python_cmd" ]; then
             echo -e "${RED}[!] Failed to find/install Python 3.11+${NC}"
             exit 1
-        }
-    }
-    
+        fi
+    fi
+
     echo -e "${GREEN}[+] Found: $($python_cmd --version)${NC}"
-    
+
     echo -e "${CYAN}[*] Installing okti...${NC}"
-    
+
     # Upgrade pip
-    $python_cmd -m pip install --upgrade pip --quiet 2>/dev/null || true
-    
-    # Install okti
-    if $python_cmd -m pip install -U okti 2>/dev/null; then
-        echo -e "${GREEN}[+] okti installed!${NC}"
-    elif $python_cmd -m pip install -U --user okti 2>/dev/null; then
-        echo -e "${GREEN}[+] okti installed (user mode)!${NC}"
-    else
-        echo -e "${RED}[!] pip install failed. Try manually:${NC}"
-        echo "    $python_cmd -m pip install okti"
+    "$python_cmd" -m pip install --upgrade pip --quiet 2>/dev/null || true
+
+    # Install order — prefer isolated tooling over user site, and fall
+    # back to the git tree until the PyPI package ships. Both okti and
+    # the git URL are attempted at each stage.
+    local pip_log
+    pip_log=$(mktemp)
+    local git_source="git+https://github.com/oktayelipek/okti.git@main"
+    local sources=("okti" "$git_source")
+    local installed_from=""
+
+    # 1. pipx — the right tool for user-facing CLIs on modern Pythons
+    if command -v pipx &>/dev/null; then
+        for src in "${sources[@]}"; do
+            if pipx install --force "$src" >"$pip_log" 2>&1; then
+                installed_from="pipx ($src)"
+                break
+            fi
+        done
+    fi
+
+    # 2. plain pip / --user
+    if [ -z "$installed_from" ]; then
+        for src in "${sources[@]}"; do
+            if "$python_cmd" -m pip install -U "$src" >"$pip_log" 2>&1 \
+                || "$python_cmd" -m pip install -U --user "$src" >"$pip_log" 2>&1; then
+                installed_from="pip ($src)"
+                break
+            fi
+        done
+    fi
+
+    # 3. PEP-668 escape hatch: only used if the user opts in
+    if [ -z "$installed_from" ] && grep -q "externally-managed-environment" "$pip_log"; then
+        echo -e "${YELLOW}[!] Python is externally-managed (PEP 668).${NC}"
+        echo -e "${YELLOW}    Retrying with --break-system-packages…${NC}"
+        for src in "${sources[@]}"; do
+            if "$python_cmd" -m pip install -U --user --break-system-packages "$src" >"$pip_log" 2>&1; then
+                installed_from="pip --break-system-packages ($src)"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$installed_from" ]; then
+        echo -e "${RED}[!] Install failed. Last output:${NC}"
+        tail -n 20 "$pip_log" | sed 's/^/    /'
+        echo -e "${RED}[!] Suggested next step:${NC}"
+        echo "    pipx install $git_source"
+        echo "    OR"
+        echo "    $python_cmd -m pip install --user $git_source"
+        rm -f "$pip_log"
         exit 1
     fi
+    echo -e "${GREEN}[+] okti installed via $installed_from${NC}"
+    rm -f "$pip_log"
     
     # Check if okti is in PATH
     if ! command -v okti &>/dev/null; then
