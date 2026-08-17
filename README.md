@@ -10,6 +10,10 @@ session undo/redo, cost estimation, and a hash-pinned plugin trust model.
 ![bandit](https://img.shields.io/badge/bandit-clean-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
+<!-- Drop a real screenshot at docs/screenshot.png to replace this line.
+     Suggested capture: TUI with FileTree sidebar + streaming reply. -->
+<!-- ![okti TUI](docs/screenshot.png) -->
+
 ---
 
 ## Install
@@ -227,6 +231,76 @@ are applied by default:
 
 - **Static checks in CI.** ruff, `mypy --check-untyped-defs`, and
   bandit (0 findings) run on every push.
+
+---
+
+## Troubleshooting
+
+**`bash: line 87: --version: command not found` on install.**
+You're getting a cached copy of an old `install.sh` from
+`raw.githubusercontent.com` (5-minute TTL). Bust the cache or pin a
+commit:
+```bash
+curl -fsSL "https://raw.githubusercontent.com/oktayelipek/okti/main/install.sh?v=$(date +%s)" | bash
+```
+
+**`error: externally-managed-environment` (PEP 668).**
+Modern Homebrew/Debian Pythons refuse global pip installs. The
+installer detects this and retries with `--user --break-system-packages`;
+if you prefer isolation:
+```bash
+pipx install git+https://github.com/oktayelipek/okti.git@main
+```
+
+**`okti: command not found` after install.**
+The `--user` install site's `bin/` isn't on your `PATH`. Add it:
+```bash
+python3 -m site --user-base   # prints e.g. /Users/you/Library/Python/3.13
+# → add "$USER_BASE/bin" to PATH in ~/.zshrc or ~/.bashrc
+```
+
+**Onboarding wizard keeps appearing.**
+Set an API key env var (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …) or
+edit `~/.config/okti/config.toml` so `default_provider` matches a
+provider that has an `api_key` set. `check_needs_onboarding` re-runs
+on every launch until either condition is satisfied.
+
+**Ollama can't connect.**
+The provider assumes `http://localhost:11434`. Override with
+`providers.ollama.base_url` in `config.toml` or `OLLAMA_HOST` env var.
+
+**MCP server never responds and the whole TUI hangs.**
+It won't — the stdio handshake is bounded at 30 s and force-kills a
+hung server. Check the log for `MCP stdio handshake timed out` and
+run the MCP command manually in a terminal to see its stderr.
+
+**Plugins don't load.**
+Plugins are disabled by default. Compute the SHA256 of your plugin
+file, add it to `plugins.trusted_hashes`, and set `plugins.enabled =
+true` in `config.toml`. See the Security Model section.
+
+---
+
+## Roadmap
+
+Roughly in priority order — pull requests welcome on any of these.
+
+- [ ] **Budget alerts.** `budget_usd_per_session` cap in config;
+      auto-disable `--yolo` and warn when a plan estimate would breach it.
+- [ ] **Shell completions.** `okti --install-completions` for bash,
+      zsh, fish.
+- [ ] **Prompt template overrides.** Load `~/.config/okti/prompts/*.md`
+      to override the built-in per-provider system prompts.
+- [ ] **Docker image.** `ghcr.io/oktayelipek/okti:latest` bundling
+      okti + Ollama for a one-command sandbox.
+- [ ] **OpenTelemetry spans.** Emit OTLP for tool calls, provider
+      requests, and permission checks.
+- [ ] **Public plugin API v1.** Version the `ToolDef` contract, add a
+      `@okti.tool` decorator, publish a plugin cookbook.
+- [ ] **Web UI.** FastAPI + WebSocket front-end reusing the same
+      `AgentLoop` core; multi-user session support.
+- [ ] **Coverage → 70 %+.** Wider integration tests for `okti/models`
+      and `okti/tui`.
 
 ---
 
