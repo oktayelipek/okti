@@ -4,7 +4,7 @@
 coding tool with multi-provider LLM support, transactional edits,
 session undo/redo, cost estimation, and a hash-pinned plugin trust model.
 
-![status](https://img.shields.io/badge/tests-393%20passing-brightgreen)
+![status](https://img.shields.io/badge/tests-410%20passing-brightgreen)
 ![coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)
 ![mypy](https://img.shields.io/badge/mypy-strict-blue)
 ![bandit](https://img.shields.io/badge/bandit-clean-brightgreen)
@@ -67,11 +67,15 @@ pip install -e ".[dev]"
 ## Quick Start
 
 ```bash
-okti                  # launch TUI (onboarding wizard runs on first launch)
-okti --setup          # force the onboarding wizard
-okti "add a REST API" # non-interactive, one-shot prompt
-okti --yolo           # skip all permission prompts (dangerous — sandboxes only)
-okti --resume         # resume the most recent session
+okti                                    # launch TUI (onboarding wizard runs on first launch)
+okti --setup                            # force the onboarding wizard
+okti "add a REST API"                   # non-interactive, one-shot prompt
+okti --yolo                             # skip all permission prompts (dangerous — sandboxes only)
+okti --resume                           # resume the most recent session
+okti --session <id>                     # resume a specific session by ID
+okti --serve --host 0.0.0.0 --port 8765 # HTTP server hosting the AgentLoop
+okti --print-prompt                     # show the resolved system prompt and exit
+okti --install-completions bash         # emit shell completion script (bash/zsh/fish)
 ```
 
 ### Keyboard shortcuts
@@ -136,6 +140,10 @@ Cost estimation uses a built-in pricing table you can override at
 | `/refresh`          | Refresh the sidebar file tree |
 | `/mcp`              | Manage MCP servers & tools |
 | `/plugin`           | Manage plugins & templates |
+| `/budget [cap]`     | Show spend vs cap, or set a new session USD cap |
+| `/prompt`           | Show which system prompt file okti resolved for the active provider |
+| `/profile`          | Show / edit the persistent cross-session user profile |
+| `/recall <query>`   | TF-IDF search across every stored session |
 
 ---
 
@@ -198,6 +206,19 @@ model   = "claude-sonnet-4-20250514"
 [plugins]
 enabled          = false
 trusted_hashes   = []
+
+# Tiered session-USD guard: warn → disable YOLO → hard stop.
+[budget]
+session_usd_cap  = 5.00   # unset (or 0) to disable
+warn_at          = 0.8    # fraction of cap
+disable_yolo_at  = 0.9
+hard_stop_at     = 1.0
+
+# JSONL exporter by default; OTLP auto-wires when opentelemetry-sdk is installed.
+[telemetry]
+enabled          = false
+otlp_endpoint    = ""     # or set OTEL_EXPORTER_OTLP_ENDPOINT
+service_name     = "okti"
 ```
 
 MCP servers live at `~/.config/okti/mcp.toml`; see `mcp.example.toml`
@@ -308,7 +329,12 @@ true` in `config.toml`. See the Security Model section.
 Recently shipped:
 
 - [x] **Budget alerts.** Tiered `BudgetGuard` (warn / disable_yolo /
-      hard_stop) driven by `config.budget.session_usd_cap`.
+      hard_stop) driven by `config.budget.session_usd_cap`, plus a
+      `/plan` breach warning when the projected cost would exceed the
+      cap.
+- [x] **OpenTelemetry spans.** OTLP exporter auto-wires when
+      `opentelemetry-sdk` is installed and an endpoint is configured;
+      spans cover tool calls, provider requests, and permission checks.
 - [x] **Prompt template overrides.** `~/.config/okti/prompts/*.md`
       override the built-in per-provider system prompts.
 - [x] **Public plugin API v1.** `@okti.tool` decorator + auto-schema.
@@ -317,18 +343,10 @@ Recently shipped:
       `/recall` across every stored session.
 - [x] **Shell completions.** `okti --install-completions {bash,zsh,fish}`
       emits a completion script to stdout.
-- [x] **Coverage → 70 %+.** 393 tests, 70 % line coverage.
+- [x] **Coverage → 70 %+.** 410 tests, 70 % line coverage.
 
 Still open — PRs welcome:
 
-- [ ] **Plan-estimate budget check.** Warn (and optionally block) when
-      a plan's projected cost would push the session past
-      `budget.session_usd_cap`.
-- [ ] **OpenTelemetry spans.** Wire real OTLP export into the existing
-      `okti.telemetry` scaffold for tool calls, provider requests, and
-      permission checks.
-- [ ] **Docker image.** `ghcr.io/oktayelipek/okti:latest` bundling
-      okti + Ollama for a one-command sandbox.
 - [ ] **Web UI.** FastAPI + WebSocket front-end reusing the same
       `AgentLoop` core; multi-user session support.
 
