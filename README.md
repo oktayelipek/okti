@@ -35,8 +35,23 @@ it installs from GitHub `main` automatically.
 
 ### Windows (PowerShell)
 
+Windows Defender's ML heuristics flag any `irm ... | iex` one-liner as
+`Trojan:Win32/Commando.A!ml` — a false positive that hits most script
+installers. Download first, then run:
+
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 | iex"
+iwr -useb https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 -OutFile okti-install.ps1
+# (optional) Get-Content okti-install.ps1  # inspect before running
+.\okti-install.ps1
+```
+
+If Defender still flags it, use the `pipx` path instead — no
+PowerShell script involved:
+
+```powershell
+winget install Python.Python.3.12
+python -m pip install --user pipx
+pipx install git+https://github.com/oktayelipek/okti.git@main
 ```
 
 ### From source
@@ -235,6 +250,13 @@ are applied by default:
 ---
 
 ## Troubleshooting
+
+**Windows Defender flags `install.ps1` as `Trojan:Win32/Commando.A!ml`.**
+False positive from ML heuristics against any `irm | iex` pipeline.
+Download the script first (`iwr -OutFile`), inspect it, then run it —
+or skip the script entirely and use `pipx install git+...` (see the
+Windows install section above). The installer no longer auto-downloads
+Python; that was the specific pattern the heuristic keyed on.
 
 **`bash: line 87: --version: command not found` on install.**
 You're getting a cached copy of an old `install.sh` from

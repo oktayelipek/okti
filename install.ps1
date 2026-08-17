@@ -1,13 +1,15 @@
-# okti installer for Windows
-# Usage: powershell -c "irm https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 | iex"
-# Or:    okti
+# okti installer for Windows (PowerShell)
+# Usage: iwr -useb https://raw.githubusercontent.com/oktayelipek/okti/main/install.ps1 -OutFile okti-install.ps1
+#        Get-Content okti-install.ps1  # inspect
+#        .\okti-install.ps1
+#
+# The classic `irm ... | iex` pipeline triggers Windows Defender's
+# machine-learning heuristics (Trojan:Win32/Commando.A!ml false
+# positive). Downloading to a file first, inspecting, then running is
+# BOTH safer and less likely to be flagged. If you still see a warning,
+# use one of the alternatives at the bottom of this file.
 
 $ErrorActionPreference = "Stop"
-
-$OKTI_VERSION = "latest"
-$PYTHON_MIN_VERSION = "3.11"
-$INSTALL_DIR = "$env:LOCALAPPDATA\okti"
-$BIN_DIR = "$env:LOCALAPPDATA\okti\bin"
 
 function Write-Header {
     Write-Host ""
@@ -16,137 +18,111 @@ function Write-Header {
     Write-Host ""
 }
 
-function Test-PythonVersion {
-    try {
-        $pythonVersion = python --version 2>&1 | Select-Object -First 1
-        if ($pythonVersion -match "Python (\d+)\.(\d+)") {
-            $major = [int]$matches[1]
-            $minor = [int]$matches[2]
-            if ($major -ge 3 -and $minor -ge 11) {
-                return $true
+function Get-PythonCommand {
+    # Probe version-suffixed binaries first, then fall back.
+    $candidates = @("python3.13", "python3.12", "python3.11", "python", "python3")
+    foreach ($cmd in $candidates) {
+        try {
+            $out = & $cmd --version 2>&1
+            if ($out -match "Python (\d+)\.(\d+)") {
+                $major = [int]$Matches[1]
+                $minor = [int]$Matches[2]
+                if ($major -ge 3 -and $minor -ge 11) {
+                    return $cmd
+                }
             }
+        } catch {
+            continue
         }
-    } catch {}
-    return $false
-}
-
-function Install-Python {
-    Write-Host "[*] Python $PYTHON_MIN_VERSION+ not found. Installing..." -ForegroundColor Yellow
-    
-    # Try winget first
-    try {
-        winget install Python.Python.3.12 --silent --accept-source-agreements --accept-package-agreements
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        return $true
-    } catch {
-        Write-Host "[!] winget install failed, trying pip..." -ForegroundColor Yellow
     }
-    
-    # Try pyenv-win or direct download
-    try {
-        $url = "https://www.python.org/ftp/python/3.12.4/python-3.12.4-amd64.exe"
-        $installer = "$env:TEMP\python-installer.exe"
-        Invoke-WebRequest -Uri $url -OutFile $installer
-        Start-Process -FilePath $installer -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1" -Wait
-        Remove-Item $installer -ErrorAction SilentlyContinue
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        return $true
-    } catch {
-        Write-Host "[!] Failed to install Python. Please install Python 3.11+ manually." -ForegroundColor Red
-        Write-Host "    https://www.python.org/downloads/" -ForegroundColor Gray
-        return $false
-    }
+    return $null
 }
 
 function Install-Okti {
-    Write-Host "[*] Installing okti..." -ForegroundColor Cyan
+    param([string]$PythonCmd)
 
-    try { python -m pip install --upgrade pip 2>&1 | Out-Null } catch {}
+    Write-Host "[*] Installing okti..." -ForegroundColor Cyan
 
     $gitSource = "git+https://github.com/oktayelipek/okti.git@main"
     $sources = @("okti", $gitSource)
 
+    # Prefer pipx (isolated venv) — right tool for user CLIs
+    $pipx = Get-Command pipx -ErrorAction SilentlyContinue
+    if ($pipx) {
+        foreach ($src in $sources) {
+            pipx install --force $src 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[+] okti installed via pipx ($src)" -ForegroundColor Green
+                return $true
+            }
+        }
+    }
+
+    # Fall back to plain pip / --user
     foreach ($src in $sources) {
-        python -m pip install -U $src 2>&1 | Out-Null
+        & $PythonCmd -m pip install -U $src 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "[+] okti installed from $src" -ForegroundColor Green
+            Write-Host "[+] okti installed via pip ($src)" -ForegroundColor Green
             return $true
         }
-        python -m pip install -U --user $src 2>&1 | Out-Null
+        & $PythonCmd -m pip install -U --user $src 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "[+] okti installed (user) from $src" -ForegroundColor Green
+            Write-Host "[+] okti installed via pip --user ($src)" -ForegroundColor Green
             return $true
         }
     }
 
-    Write-Host "[!] Both PyPI and GitHub installs failed." -ForegroundColor Red
-    Write-Host "    Try manually: pip install --user $gitSource" -ForegroundColor Gray
     return $false
 }
 
-function Add-ToPath {
-    $scriptsDir = python -c "import site; print(site.getusersitepackages())" 2>$null
-    if ($scriptsDir) {
-        $scriptsDir = $scriptsDir -replace "site-packages", "Scripts"
-        $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-        if ($currentPath -notlike "*$scriptsDir*") {
-            [Environment]::SetEnvironmentVariable("Path", "$currentPath;$scriptsDir", "User")
-            $env:Path += ";$scriptsDir"
-            Write-Host "[+] Added to PATH: $scriptsDir" -ForegroundColor Green
-        }
-    }
-}
-
-function Test-Installation {
-    try {
-        $version = okti --version 2>&1
-        if ($version -match "okti") {
-            return $true
-        }
-    } catch {}
-    return $false
-}
-
+# ---------------------------------------------------------------------------
 # Main
+# ---------------------------------------------------------------------------
+
 Write-Header
 
-# Check/install Python
-if (-not (Test-PythonVersion)) {
-    if (-not (Install-Python)) {
-        exit 1
-    }
+$pythonCmd = Get-PythonCommand
+if (-not $pythonCmd) {
+    Write-Host "[!] Python 3.11+ not found on PATH." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Install one of these first, then re-run this script:" -ForegroundColor Yellow
+    Write-Host "    winget install Python.Python.3.12" -ForegroundColor Gray
+    Write-Host "    winget install Python.Python.3.13" -ForegroundColor Gray
+    Write-Host "    OR download from https://www.python.org/downloads/" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  (This script no longer auto-downloads Python — that" -ForegroundColor DarkGray
+    Write-Host "   pattern was a Windows Defender ML false-positive trigger.)" -ForegroundColor DarkGray
+    exit 1
 }
 
-$pythonVersion = python --version 2>&1
-Write-Host "[+] Found: $pythonVersion" -ForegroundColor Green
+$pythonVersion = & $pythonCmd --version 2>&1
+Write-Host "[+] Found: $pythonVersion ($pythonCmd)" -ForegroundColor Green
 
-# Install okti
-if (Install-Okti) {
-    Add-ToPath
-    
-    if (Test-Installation) {
-        Write-Host ""
-        Write-Host "  ✅ okti installed successfully!" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "  Quick start:" -ForegroundColor White
-        Write-Host "    okti                    # Launch TUI" -ForegroundColor Gray
-        Write-Host "    okti --help             # Show options" -ForegroundColor Gray
-        Write-Host "    okti --yolo              # Skip permission prompts" -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "  Configure:" -ForegroundColor White
-        Write-Host "    /provider openai             # Switch to OpenAI" -ForegroundColor Gray
-        Write-Host "    /models                      # List available models" -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "  Set your API key:" -ForegroundColor White
-        Write-Host '    $env:OPENAI_API_KEY = "sk-..."' -ForegroundColor Gray
-        Write-Host '    $env:ANTHROPIC_API_KEY = "sk-ant-..."' -ForegroundColor Gray
-        Write-Host ""
-    } else {
-        Write-Host "[!] Installation completed but 'okti' command not found." -ForegroundColor Yellow
-        Write-Host "    Try restarting your terminal or running: pip install okti" -ForegroundColor Gray
-    }
+if (Install-Okti -PythonCmd $pythonCmd) {
+    Write-Host ""
+    Write-Host "  OK  okti installed" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Quick start:" -ForegroundColor White
+    Write-Host "    okti                    # launch TUI" -ForegroundColor Gray
+    Write-Host "    okti --help             # show options" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  If 'okti' is not found, add pip's script dir to PATH." -ForegroundColor DarkGray
+    Write-Host "  Find it with: $pythonCmd -m site --user-base" -ForegroundColor DarkGray
+    Write-Host "  Then append '\Scripts' to that path." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Configure API keys:" -ForegroundColor White
+    Write-Host '    $env:OPENAI_API_KEY = "sk-..."' -ForegroundColor Gray
+    Write-Host '    $env:ANTHROPIC_API_KEY = "sk-ant-..."' -ForegroundColor Gray
+    Write-Host ""
 } else {
-    Write-Host "[!] Installation failed." -ForegroundColor Red
-    Write-Host "    Try manually: pip install okti" -ForegroundColor Gray
+    Write-Host "[!] Install failed." -ForegroundColor Red
+    Write-Host "  Try one of these alternatives:" -ForegroundColor Yellow
+    Write-Host "    pipx install git+https://github.com/oktayelipek/okti.git@main" -ForegroundColor Gray
+    Write-Host "    $pythonCmd -m pip install --user git+https://github.com/oktayelipek/okti.git@main" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Or clone and install manually:" -ForegroundColor Yellow
+    Write-Host "    git clone https://github.com/oktayelipek/okti.git" -ForegroundColor Gray
+    Write-Host "    cd okti" -ForegroundColor Gray
+    Write-Host "    $pythonCmd -m pip install -e ." -ForegroundColor Gray
     exit 1
 }
