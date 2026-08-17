@@ -87,6 +87,7 @@ class AgentLoop:
         register_bash_tools(registry)
         register_web_tools(registry)
         register_git_tools(registry)
+        self._register_swarm_tools(registry)
 
         # Load user plugins (disabled by default; requires trust-pinned hashes)
         plugins_cfg = self.config.plugins
@@ -98,6 +99,45 @@ class AgentLoop:
         )
 
         return registry
+
+    def _register_swarm_tools(self, registry: ToolRegistry) -> None:
+        """Expose the AgentSwarm as a `parallel_review` tool.
+
+        Runs security / correctness / style reviewers concurrently over
+        the given target and returns a merged markdown report. Bounded
+        by the swarm's per-task timeout so a stuck reviewer can't hang
+        the parent turn.
+        """
+        from okti.agent.swarm import AgentSwarm, build_review_swarm
+        from okti.tools.registry import ToolDef
+
+        async def _parallel_review(target: str) -> str:
+            swarm = AgentSwarm(self, max_parallel=3)
+            tasks = build_review_swarm(target, model=self.config.default_model)
+            result = await swarm.run(tasks)
+            return result.render_markdown()
+
+        registry.register(ToolDef(
+            name="parallel_review",
+            description=(
+                "Fan out three focused reviewers over the target files "
+                "(security, correctness, style) IN PARALLEL and return "
+                "a merged markdown report with P0-P3 ranked findings. "
+                "Use for pre-ship review of substantial changes."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "string",
+                        "description": "File path, glob, or scope description to review",
+                    },
+                },
+                "required": ["target"],
+            },
+            handler=_parallel_review,
+            risk_level="low",
+        ))
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt with provider-specific template and project memory."""
